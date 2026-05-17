@@ -7,8 +7,9 @@
 
 // Exportamos desde el mismo archivo para mantenerlo simple
 const ALEGRA_API_URL = 'https://app.alegra.com/api/v1';
-const ALEGRA_TOKEN   = process.env.ALEGRA_TOKEN;  // Base64(usuario:token)
-
+const ALEGRA_USUARIO   = process.env.ALEGRA_USUARIO;  
+const ALEGRA_TOKEN   = process.env.ALEGRA_TOKEN;  
+const ALEGRA_TOKEN_BASE64 = Buffer.from(`${ALEGRA_USUARIO}:${ALEGRA_TOKEN}`).toString('base64'); // Base64(usuario:token)
 
 async function generarFactura({ referencia, cliente, carrito, totalPesos, metodoPago }) {
   const items = carrito.map(item => ({
@@ -22,7 +23,7 @@ async function generarFactura({ referencia, cliente, carrito, totalPesos, metodo
   // const response = await fetch(`${ALEGRA_API_URL}/invoices`, {
   //   method: 'POST',
   //   headers: {
-  //     'Authorization': `Basic ${ALEGRA_TOKEN}`,
+  //     'Authorization': `Basic ${ALEGRA_TOKEN_BASE64}`,
   //     'Content-Type': 'application/json'
   //   },
   //   body: JSON.stringify({
