@@ -9,9 +9,11 @@ app.use(cors())
 app.use(express.json())
 
 
-app.use('/api/chat',        require('./routes/chat'))     // 🤖 El bot de Rusti
-app.use('/api/pagos',   require('./routes/pagos'))    // 💳 Wompi
-app.use('/api/webhook', require('./routes/webhook'))  // 🔔 Wompi webhooks
-
+// Rutas
+app.use('/chat',        require('./routes/chat'));     // 🤖 Bot Rusti
+app.use('/api/auth',    require('./routes/auth'));     // 🔐 Autenticación
+app.use('/api/pagos',   require('./routes/pagos'));    // 💳 Wompi
+app.use('/api/webhook', require('./routes/webhook')); // 🔔 Wompi webhooks
+ 
 
 app.listen(3001, () => console.log('Backend en http://localhost:3001'))
