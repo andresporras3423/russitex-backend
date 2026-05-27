@@ -1,3 +1,6 @@
+const guardar = require('../database/supabase')
+
+
 /////////////////////////////
 const express  = require('express')
 const router   = express.Router()
@@ -162,14 +165,22 @@ router.post('/', async (req, res) => {
 
   const reply = response.choices[0].message.content
   const responseTime = Date.now() - start
-
-  // Guardar en Supabase (sin await para no ralentizar la respuesta)
-  supabase.from('chats').insert({
+  guardar('chats', {
     ip,
     user_message: messages.at(-1).content,
     bot_response: reply,
     response_time_ms: responseTime
-  }).then(() => {}).catch(console.error)
+  })
+
+  //   supabase.from('chats').insert({
+//     ip,
+//     user_message: messages.at(-1).content,
+//     bot_response: reply,
+//     response_time_ms: responseTime
+//   }).then(() => {}).catch(console.error)
+
+
+  // Guardar en Supabase (sin await para no ralentizar la respuesta)
 
 // Reemplaza esto temporalmente para debuggear
 // const { data, error } = await supabase.from('chats').insert({

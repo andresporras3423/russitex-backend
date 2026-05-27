@@ -38,7 +38,7 @@ async function crearPendiente({ referencia, carrito, cliente, envio, totalPesos 
 // ------------------------------------------------------------
 // Actualizar estado de un pedido
 // Se llama desde el webhook cuando Wompi confirma el pago
-// ------------------------------------------------------------
+ // ------------------------------------------------------------
 async function actualizarEstado(referencia, nuevoEstado, datosPago = {}) {
   const pedido = db.get(referencia);
 
