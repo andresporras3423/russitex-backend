@@ -133,12 +133,6 @@ function checkLimit(ip) {
   return { allowed: true, remaining: LIMIT - usage.count }
 }
 
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-)
-
 router.post('/', async (req, res) => {
   const ip = req.ip
   const { allowed, remaining, minutesLeft } = checkLimit(ip)
@@ -170,7 +164,7 @@ router.post('/', async (req, res) => {
     user_message: messages.at(-1).content,
     bot_response: reply,
     response_time_ms: responseTime
-  })
+  }, "error guardando chat")
 
   //   supabase.from('chats').insert({
 //     ip,

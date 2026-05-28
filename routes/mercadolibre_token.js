@@ -1,3 +1,9 @@
+const express = require('express')
+const router = express.Router()
+
+
+const {upsert} = require('../database/supabase')
+
 // POST /api/mercadolibre/auth
 router.post("/mercadolibre_token", async (req, res) => {
   const { code } = req.body;
@@ -15,13 +21,16 @@ router.post("/mercadolibre_token", async (req, res) => {
   });
 
   const tokens = await response.json();
-
+console.log(tokens);
   // Guarda en DB o en .env / archivo
-  await saveTokensToDB({
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
-    expiresAt: Date.now() + (tokens.expires_in * 1000)
-  });
+await upsert("ml_tokens", {
+  id: 1,
+  access_token: tokens.access_token,
+  refresh_token: tokens.refresh_token,
+  expires_at: Date.now() + (tokens.expires_in * 1000)
+});
 
   res.json({ message: "Tokens guardados correctamente" });
 });
+
+module.exports = router
