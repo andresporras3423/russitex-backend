@@ -41,6 +41,20 @@ async function select(table, filters = {}) {
   return data
 }
 
+// Igual que select(), pero devuelve TODAS las filas que coincidan
+// en vez de exigir exactamente una.
+async function selectAll(table, filters = {}) {
+  let query = supabase.from(table).select('*')
+  Object.entries(filters).forEach(([key, value]) => {
+    query = query.eq(key, value)
+  })
+  const { data, error } = await query
+  if (error) {
+    console.log(error)
+    throw new Error(`Error leyendo ${table}: ${error.message}`)
+  }
+  return data || []
+}
 
 
-module.exports = {guardar, upsert, getTokensFromDB, select}
+module.exports = {guardar, upsert, getTokensFromDB, select, selectAll}
