@@ -6,6 +6,14 @@ const OpenAI = require('openai')
 dotenv.config()
 const app = express()
 app.use(cors())
+
+// OJO con el orden: esta ruta va ANTES del express.json() general, porque
+// el primer parser que corre es el que manda. Si quedara después, el
+// límite de 100 kb del general rechazaría la imagen con un 413 y este
+// parser de 15 MB nunca llegaría a actuar.
+// 10 MB de imagen -> ~13.4 MB en base64, más el resto del formulario.
+app.use('/api/asesoria', express.json({ limit: '15mb' }), require('./routes/asesoria')); // ✉️ Formulario de asesoría
+
 app.use(express.json())
 
 

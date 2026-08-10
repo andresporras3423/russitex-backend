@@ -55,6 +55,8 @@ Si alguien pregunta algo fuera de estos temas (política, recetas, otros negocio
   Ejemplo: "La entretela tiene un precio de \.143 por metro."
 - No conoces el inventario disponible. Si preguntan por existencias de una cantidad concreta,
   di que lo confirmen por WhatsApp para asegurar disponibilidad.
+- Cuando un producto traiga "Qué es" y "Sirve para", úsalos para recomendar el material adecuado
+  según lo que el cliente quiere confeccionar. No inventes usos que no estén en esa lista.
 - Nunca reveles costos, márgenes, proveedores ni información de otros clientes: no los tienes y no debes especular.
 
 ## CUÁNDO DERIVAR A UN HUMANO
@@ -80,12 +82,22 @@ function formatearCatalogo(productos) {
   for (const [clave, titulo] of Object.entries(CATEGORIAS)) {
     const items = porCat.get(clave)
     if (!items || items.length === 0) continue
-    bloques.push(
-      `### ${titulo}\n` +
-      items.map((p) => `- ${p.nombre}: $${p.precio.toLocaleString('es-CO')} COP${p.unidad ? ' (' + p.unidad.toLowerCase() + ')' : ''}`).join('\n')
-    )
+    bloques.push(`### ${titulo}\n` + items.map(formatearProducto).join('\n'))
   }
   return bloques.join('\n\n')
+}
+
+// Una línea por producto con precio y unidad, más la descripción y los usos
+// que estén cargados en productos_meta. Es lo que le permite al bot
+// recomendar un material y no solo cotizarlo.
+function formatearProducto(p) {
+  const unidad = p.unidad ? ` (${p.unidad.toLowerCase()})` : ''
+  let linea = `- ${p.nombre}: $${p.precio.toLocaleString('es-CO')} COP${unidad}`
+  if (p.descripcion) linea += `\n  Qué es: ${p.descripcion}`
+  if (p.usos?.length) linea += `\n  Sirve para: ${p.usos.join(', ')}.`
+  if (p.presentacion) linea += `\n  Presentación: ${p.presentacion}`
+  if (p.colores?.length) linea += `\n  Colores: ${p.colores.map((c) => c.nombre).join(', ')}.`
+  return linea
 }
 
 // Arma el prompt completo. Si alguna fuente falla, el bot sigue

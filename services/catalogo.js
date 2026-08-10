@@ -23,6 +23,19 @@ const CACHE_MS = 24 * 60 * 60 * 1000
 
 let cache = { datos: null, expira: 0 }
 
+// Las columnas jsonb llegan ya parseadas, pero pueden venir null (fila vieja)
+// o como texto si alguien las cargó a mano desde el panel.
+function asArray(valor) {
+  if (Array.isArray(valor)) return valor
+  if (typeof valor === 'string') {
+    try {
+      const p = JSON.parse(valor)
+      return Array.isArray(p) ? p : []
+    } catch { return [] }
+  }
+  return []
+}
+
 async function construirCatalogo() {
   // Si Supabase falla no tumbamos el catálogo: mostramos los productos
   // de Alegra sin categoría ni foto, que es mejor que no mostrar nada.
@@ -48,6 +61,19 @@ async function construirCatalogo() {
         categoria: meta.categoria || 'otros',
         imagen:    meta.imagen_url || null,
         orden:     meta.orden ?? 0,
+        disponible: p.disponible,
+        stockReal:  p.stockReal,
+
+        // Contenido de la página de detalle. Todo opcional: la página
+        // esconde la sección que venga vacía.
+        descripcion:      meta.descripcion || null,
+        descripcionLarga: meta.descripcion_larga || null,
+        usos:             asArray(meta.usos),
+        detalles:         asArray(meta.detalles),
+        cuidados:         meta.cuidados || null,
+        colores:          asArray(meta.colores),
+        presentacion:     meta.presentacion || null,
+        imagenes:         asArray(meta.imagenes),
       }
     })
     .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))

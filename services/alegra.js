@@ -44,8 +44,46 @@ const UNIDADES = {
   kit:   'Por caja',
 }
 
+// ------------------------------------------------------------
+//  DISPONIBILIDAD
+//
+//  Hoy el inventario de Alegra NO se puede usar. Revisado el 2026-08-08:
+//    - 36 de 39 productos tienen initialQuantity = 99999 (el relleno que
+//      pone Alegra cuando no se lleva stock).
+//    - Los otros 3 tienen cantidades imposibles, porque Alegra viene
+//      descontando de las facturas sin que nadie reponga:
+//        entretela doble punto -> -3366.4
+//        Hombrera en algodón   -> -804
+//        Sido                  ->  9889.1
+//
+//  Marcar como "Agotado" los dos primeros sería mentirle al cliente: son
+//  productos que el almacén sí tiene. Por eso, mientras no se maneje el
+//  inventario de verdad, todo se muestra como disponible.
+//
+//  Cuando en Alegra empiecen a llevar stock real, poner esta constante en
+//  true: la ficha de producto y el bot ya soportan el estado agotado y se
+//  enteran solos, sin tocar nada más.
+// ------------------------------------------------------------
+const USAR_INVENTARIO_ALEGRA = false
+
+const CANTIDAD_PLACEHOLDER = 9999
+
+function disponibilidad(item) {
+  if (!USAR_INVENTARIO_ALEGRA) return { disponible: true, stockReal: false }
+
+  const cantidad = Number(
+    item.inventory?.availableQuantity ?? item.inventory?.initialQuantity ?? NaN
+  )
+  // Sin dato, o el relleno de Alegra: no sabemos, así que no decimos que falta.
+  if (!Number.isFinite(cantidad) || cantidad >= CANTIDAD_PLACEHOLDER) {
+    return { disponible: true, stockReal: false }
+  }
+  return { disponible: cantidad > 0, stockReal: true }
+}
+
 function normalizarItem(item) {
   const unidadCruda = item.inventory?.unit ?? item.unit ?? null
+  const { disponible, stockReal } = disponibilidad(item)
   return {
     alegraId: String(item.id),
     nombre:   item.name,
@@ -54,6 +92,9 @@ function normalizarItem(item) {
     precio:   Math.round(normalizarPrecio(item.price)),
     unidadAlegra: unidadCruda ? (UNIDADES[unidadCruda] || unidadCruda) : null,
     activo:   item.status !== 'inactive',
+    disponible,
+    // Le sirve al bot para saber si puede hablar de disponibilidad.
+    stockReal,
   }
 }
 
