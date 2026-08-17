@@ -18,6 +18,7 @@ const { enviarCorreo, verificarConexion, configurado } = require('../services/co
 const EJEMPLO = {
   nombre: 'Ana Pérez',
   wa: '300 123 4567',
+  correo: 'ana.perez@ejemplo.com',
   prenda: 'chaqueta de paño',
   logro: 'dar estructura al cuello y a las solapas',
   tela: 'paño grueso',

@@ -29,6 +29,8 @@ function pasaLimite(ip) {
   return true
 }
 
+const CORREO_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 const MAX_TEXTO = 2000
 const MAX_IMAGEN_BYTES = 10 * 1024 * 1024   // el mismo tope que valida el formulario
 
@@ -69,7 +71,8 @@ function construirAdjunto(imagen) {
 function armarCorreo(d, imagen = 'ninguna') {
   const filas = [
     ['Nombre', d.nombre],
-    ['WhatsApp', d.wa],
+    ['Celular', d.wa],
+    ['Correo', d.correo],
     ['Qué confecciona', d.prenda],
     ['Qué necesita lograr', d.logro],
   ]
@@ -98,7 +101,8 @@ function armarCorreo(d, imagen = 'ninguna') {
           </tr>`).join('')}
       </table>
       <p style="font-size:12px;color:#6E665C;margin-top:18px">
-        Para responder, escríbele por WhatsApp al ${escaparHtml(d.wa)}.
+        Podés responder este correo directamente — le llega a ${escaparHtml(d.correo)} —
+        o escribirle al celular ${escaparHtml(d.wa)}.
       </p>
     </div>`
 
@@ -116,15 +120,22 @@ router.post('/', async (req, res) => {
   const datos = {
     nombre:      limpiar(req.body?.nombre, 120),
     wa:          limpiar(req.body?.wa, 40),
+    correo:      limpiar(req.body?.correo, 160),
     prenda:      limpiar(req.body?.prenda, 300),
     logro:       limpiar(req.body?.logro, 300),
     tela:        limpiar(req.body?.tela, 200),
     comentarios: limpiar(req.body?.comentarios),
   }
 
-  const faltantes = ['nombre', 'wa', 'prenda', 'logro'].filter((c) => !datos[c])
+  const faltantes = ['nombre', 'wa', 'correo', 'prenda', 'logro'].filter((c) => !datos[c])
   if (faltantes.length > 0) {
     return res.status(400).json({ error: `Faltan campos obligatorios: ${faltantes.join(', ')}.` })
+  }
+
+  // Se revalida acá aunque el formulario ya lo compruebe: el endpoint es
+  // público y va a ir en el replyTo del correo.
+  if (!CORREO_VALIDO.test(datos.correo)) {
+    return res.status(400).json({ error: 'El correo electrónico no es válido.' })
   }
 
   if (!configurado()) {
@@ -146,6 +157,9 @@ router.post('/', async (req, res) => {
       asunto: `Asesoría: ${datos.nombre} — ${datos.prenda}`,
       texto,
       html,
+      // Así, al darle "Responder" en el correo, la respuesta le llega
+      // directo al cliente en vez de volver a la propia bandeja.
+      responderA: datos.correo,
       adjuntos: adjunto ? [adjunto] : [],
     })
     console.log(`[asesoria] Correo enviado (${id}) — ${datos.nombre}`)

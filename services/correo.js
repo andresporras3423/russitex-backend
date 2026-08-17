@@ -43,9 +43,13 @@ function obtenerTransporte() {
 /**
  * Envía un correo. `adjuntos` va en el formato de nodemailer:
  *   [{ filename, content: Buffer, contentType }]
+ *
+ * `destino` es opcional: si no se pasa va a CORREO_DESTINO, que es lo que
+ * usa el formulario de asesoría para avisarle al almacén. Se pasa cuando
+ * el correo va dirigido a un cliente.
  */
-async function enviarCorreo({ asunto, texto, html, responderA, adjuntos = [] }) {
-  const destino = process.env.CORREO_DESTINO || process.env.SMTP_USER
+async function enviarCorreo({ asunto, texto, html, responderA, adjuntos = [], destino: destinoExplicito }) {
+  const destino = destinoExplicito || process.env.CORREO_DESTINO || process.env.SMTP_USER
   const info = await obtenerTransporte().sendMail({
     // El remitente TIENE que ser la misma cuenta autenticada: si se pone
     // otra, Zoho rechaza el envío.
