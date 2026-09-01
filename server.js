@@ -22,6 +22,7 @@ app.use('/chat',        require('./routes/chat'));     // 🤖 Bot Rusti
 app.use('/api/auth',    require('./routes/auth'));     // 🔐 Autenticación
 app.use('/api/productos', require('./routes/productos')); // 📦 Catálogo (Alegra + Supabase)
 app.use('/api/tienda',  require('./routes/tienda'));   // 🏪 Info del local (horarios, contacto, envíos)
+app.use('/api/avisos',  require('./routes/avisos'));   // 🔔 "Avísame cuando esté disponible"
 app.use('/api/pagos',   require('./routes/pagos'));    // 💳 Wompi
 app.use('/api/webhook', require('./routes/webhook')); // 🔔 Wompi webhooks
 app.use("/api/mercadolibre", require('./routes/publicacion'));
@@ -29,3 +30,7 @@ app.use('/api/mercadolibre', require('./routes/mercadolibre_token'));
 
 
 app.listen(3001, () => console.log('Backend en http://localhost:3001'))
+
+// Red de seguridad de los avisos de reingreso. Apagada salvo que
+// AVISOS_CRON_MINUTOS esté en el .env.
+require('./services/cronAvisos').iniciarCronAvisos()

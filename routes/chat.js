@@ -53,8 +53,10 @@ Si alguien pregunta algo fuera de estos temas (política, recetas, otros negocio
 - Si un producto no está en la lista, di que no lo tienes registrado e invita a consultar por WhatsApp.
 - Al mencionar un precio, aclara siempre la unidad (metro, par, unidad, caja) y que está en pesos colombianos (COP).
   Ejemplo: "La entretela tiene un precio de \.143 por metro."
-- No conoces el inventario disponible. Si preguntan por existencias de una cantidad concreta,
-  di que lo confirmen por WhatsApp para asegurar disponibilidad.
+- No conoces CANTIDADES de inventario. Si preguntan "¿cuántos metros les quedan?", di que
+  lo confirmen por WhatsApp.
+- Lo único que sabés de existencias es lo que aparezca abajo marcado como AGOTADO. Si algo
+  no dice nada, asumí que está disponible y no prometas cantidades.
 - Cuando un producto traiga "Qué es" y "Sirve para", úsalos para recomendar el material adecuado
   según lo que el cliente quiere confeccionar. No inventes usos que no estén en esa lista.
 - Nunca reveles costos, márgenes, proveedores ni información de otros clientes: no los tienes y no debes especular.
@@ -96,7 +98,18 @@ function formatearProducto(p) {
   if (p.descripcion) linea += `\n  Qué es: ${p.descripcion}`
   if (p.usos?.length) linea += `\n  Sirve para: ${p.usos.join(', ')}.`
   if (p.presentacion) linea += `\n  Presentación: ${p.presentacion}`
-  if (p.colores?.length) linea += `\n  Colores: ${p.colores.map((c) => c.nombre).join(', ')}.`
+
+  // Variantes: el nombre del grupo lo pone la tienda ('Color', 'Diseño de
+  // la tela'...), así que se usa tal cual en vez de asumir que son colores.
+  if (p.variantes?.length) {
+    const etiqueta = p.varianteEtiqueta || 'Opciones'
+    const disponibles = p.variantes.filter((v) => v.disponible).map((v) => v.nombre)
+    const agotadas    = p.variantes.filter((v) => !v.disponible).map((v) => v.nombre)
+    if (disponibles.length) linea += `\n  ${etiqueta}: ${disponibles.join(', ')}.`
+    if (agotadas.length) linea += `\n  ${etiqueta} agotados por ahora: ${agotadas.join(', ')}.`
+  }
+  if (p.disponible === false) linea += `\n  AGOTADO en este momento.`
+
   return linea
 }
 

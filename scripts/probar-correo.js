@@ -40,6 +40,7 @@ async function main() {
   console.log('SMTP_PORT      :', process.env.SMTP_PORT || '(vacío)')
   console.log('SMTP_USER      :', process.env.SMTP_USER || '(vacío)')
   console.log('SMTP_PASS      :', process.env.SMTP_PASS ? '(definida)' : '(VACÍA)')
+  console.log('CORREO_REMITENTE:', process.env.CORREO_REMITENTE || '(usa SMTP_USER)')
   console.log('CORREO_DESTINO :', process.env.CORREO_DESTINO || '(usa SMTP_USER)')
 
   if (!enviar) {

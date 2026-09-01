@@ -36,23 +36,80 @@ function asArray(valor) {
   return []
 }
 
+// Agrupa filas por una clave, para no recorrer el arreglo entero por producto.
+function agruparPor(filas, clave) {
+  const mapa = new Map()
+  for (const f of filas) {
+    const k = String(f[clave])
+    if (!mapa.has(k)) mapa.set(k, [])
+    mapa.get(k).push(f)
+  }
+  return mapa
+}
+
+const porOrden = (a, b) => (a.orden ?? 0) - (b.orden ?? 0)
+
+const aImagen = (i) => ({ url: i.url, alt: i.alt || null })
+
 async function construirCatalogo() {
   // Si Supabase falla no tumbamos el catálogo: mostramos los productos
   // de Alegra sin categoría ni foto, que es mejor que no mostrar nada.
-  const [productos, metas] = await Promise.all([
+  const sinSupabase = (tabla) => (e) => {
+    console.error(`[catalogo] No se pudo leer ${tabla}:`, e.message)
+    return []
+  }
+
+  const [productos, metas, variantes, imagenes] = await Promise.all([
     obtenerProductos(),
-    selectAll('productos_meta').catch((e) => {
-      console.error('[catalogo] No se pudo leer productos_meta:', e.message)
-      return []
-    }),
+    selectAll('productos_meta').catch(sinSupabase('productos_meta')),
+    selectAll('producto_variantes').catch(sinSupabase('producto_variantes')),
+    selectAll('producto_imagenes').catch(sinSupabase('producto_imagenes')),
   ])
 
   const metaPorId = new Map(metas.map((m) => [String(m.alegra_id), m]))
+  const variantesPorProducto = agruparPor(variantes, 'alegra_id')
+  const imagenesPorProducto  = agruparPor(imagenes, 'alegra_id')
+  // Las de variante_id nulo quedan bajo la clave 'null'; se filtran aparte.
+  const imagenesPorVariante  = agruparPor(imagenes.filter((i) => i.variante_id != null), 'variante_id')
 
   return productos
     .filter((p) => p.activo)
     .map((p) => {
       const meta = metaPorId.get(p.alegraId) || {}
+
+      // Imágenes del producto (variante_id nulo): valen para todas las
+      // variantes y sirven de respaldo si una no tiene fotos propias.
+      const imgsProducto = (imagenesPorProducto.get(p.alegraId) || [])
+        .filter((i) => i.variante_id == null)
+        .sort(porOrden)
+        .map(aImagen)
+
+      const variantes = (variantesPorProducto.get(p.alegraId) || [])
+        .sort(porOrden)
+        .map((v) => {
+          const propias = (imagenesPorVariante.get(String(v.id)) || []).sort(porOrden).map(aImagen)
+          return {
+            id:         v.id,
+            nombre:     v.nombre,
+            hex:        v.hex || null,
+            // El chip del selector: su swatch, si no el color plano, si no
+            // la primera foto que tenga. La ficha decide qué hacer si no hay nada.
+            swatch:     v.swatch_url || null,
+            disponible: v.disponible !== false,
+            // Si la variante no tiene fotos propias usa las del producto.
+            imagenes:   propias.length > 0 ? propias : imgsProducto,
+          }
+        })
+
+      // Para estar disponible tienen que cumplirse las TRES condiciones.
+      // Es un Y, no un O: si Alegra dice que no hay existencias del producto,
+      // da igual que sus variantes estén marcadas como disponibles —  Alegra
+      // lleva el inventario del producto entero, no de cada color.
+      const disponible =
+        p.disponible &&                        // inventario de Alegra
+        meta.disponible !== false &&           // interruptor manual del producto
+        (variantes.length === 0 || variantes.some((v) => v.disponible))
+
       return {
         id:        p.alegraId,
         nombre:    p.nombre,
@@ -61,8 +118,8 @@ async function construirCatalogo() {
         categoria: meta.categoria || 'otros',
         imagen:    meta.imagen_url || null,
         orden:     meta.orden ?? 0,
-        disponible: p.disponible,
-        stockReal:  p.stockReal,
+        disponible,
+        stockReal: p.stockReal,
 
         // Contenido de la página de detalle. Todo opcional: la página
         // esconde la sección que venga vacía.
@@ -71,9 +128,12 @@ async function construirCatalogo() {
         usos:             asArray(meta.usos),
         detalles:         asArray(meta.detalles),
         cuidados:         meta.cuidados || null,
-        colores:          asArray(meta.colores),
         presentacion:     meta.presentacion || null,
-        imagenes:         asArray(meta.imagenes),
+
+        // Variantes: `varianteEtiqueta` nulo = producto de presentación única.
+        varianteEtiqueta: meta.variante_etiqueta || null,
+        variantes,
+        imagenes: imgsProducto,
       }
     })
     .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))

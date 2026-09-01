@@ -50,10 +50,13 @@ function obtenerTransporte() {
  */
 async function enviarCorreo({ asunto, texto, html, responderA, adjuntos = [], destino: destinoExplicito }) {
   const destino = destinoExplicito || process.env.CORREO_DESTINO || process.env.SMTP_USER
+  // El remitente puede ser un ALIAS de la cuenta autenticada (Zoho lo
+  // permite), pero nunca una dirección ajena: eso sí lo rechaza.
+  // Si CORREO_REMITENTE está vacío se usa la cuenta misma.
+  const remitente = process.env.CORREO_REMITENTE || process.env.SMTP_USER
+
   const info = await obtenerTransporte().sendMail({
-    // El remitente TIENE que ser la misma cuenta autenticada: si se pone
-    // otra, Zoho rechaza el envío.
-    from: `"Russitex — web" <${process.env.SMTP_USER}>`,
+    from: `"Russitex" <${remitente}>`,
     to: destino,
     subject: asunto,
     text: texto,

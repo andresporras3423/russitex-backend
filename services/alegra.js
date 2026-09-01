@@ -45,24 +45,37 @@ const UNIDADES = {
 }
 
 // ------------------------------------------------------------
-//  DISPONIBILIDAD
+//  DISPONIBILIDAD — por qué NO se usa el inventario de Alegra
 //
-//  Hoy el inventario de Alegra NO se puede usar. Revisado el 2026-08-08:
-//    - 36 de 39 productos tienen initialQuantity = 99999 (el relleno que
-//      pone Alegra cuando no se lleva stock).
-//    - Los otros 3 tienen cantidades imposibles, porque Alegra viene
-//      descontando de las facturas sin que nadie reponga:
-//        entretela doble punto -> -3366.4
-//        Hombrera en algodón   -> -804
-//        Sido                  ->  9889.1
+//  Decidido con Oscar el 2026-08-23, después de probarlo encendido.
 //
-//  Marcar como "Agotado" los dos primeros sería mentirle al cliente: son
-//  productos que el almacén sí tiene. Por eso, mientras no se maneje el
-//  inventario de verdad, todo se muestra como disponible.
+//  Los números de Alegra no sirven, y el motivo es preciso: las VENTAS
+//  se registran (por eso baja), pero las COMPRAS no (nadie anota cuando
+//  llega mercancía). Así quedan:
+//        entretela doble punto -> inicial 1    disponible -3366.4
+//        Hombrera en algodón   -> inicial 500  disponible  -804
+//        Sido                  -> inicial 10000 disponible 9889.1
+//    y los otros 36 con initialQuantity = 99999, el relleno de Alegra.
 //
-//  Cuando en Alegra empiecen a llevar stock real, poner esta constante en
-//  true: la ficha de producto y el bot ya soportan el estado agotado y se
-//  enteran solos, sin tocar nada más.
+//  No es un problema de variantes: Alegra factura un ítem por producto,
+//  no por color. Partir un producto en varios códigos de Alegra daría
+//  varios contadores negativos en vez de uno.
+//
+//  Por eso la disponibilidad es un BOOLEANO MANUAL en Supabase:
+//      productos_meta.disponible        -> el producto entero
+//      producto_variantes.disponible    -> cada color / estampado
+//
+//  Equivocarse hacia "hay" sale más barato que hacia "no hay": un
+//  "Agotado" falso pierde la venta en silencio; un "disponible" falso
+//  termina en una conversación por WhatsApp, que iba a pasar igual.
+//
+//  PENDIENTE: una pantalla de administración para marcar esto. Si hay
+//  que entrar al panel de Supabase a editar filas, nadie lo va a hacer
+//  y la web va a mentir igual que Alegra.
+//
+//  Si algún día en Alegra se registran también las compras, poner esta
+//  constante en true y el mecanismo revive solo: la ficha y el bot ya
+//  soportan el estado agotado.
 // ------------------------------------------------------------
 const USAR_INVENTARIO_ALEGRA = false
 
