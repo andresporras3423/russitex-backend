@@ -3,9 +3,15 @@
 // ============================================================
 const crypto = require('crypto');
 
-const WOMPI_BASE_URL     = 'https://production.wompi.co/v1';
-const WOMPI_PRIVATE_KEY  = process.env.WOMPI_PRIVATE_KEY;   // prv_prod_XXXX
+const WOMPI_PRIVATE_KEY  = process.env.WOMPI_PRIVATE_KEY;   // prv_prod_XXXX o prv_test_XXXX
 const WOMPI_INTEGRITY    = process.env.WOMPI_INTEGRITY;     // secreto de integridad
+
+// Las llaves de prueba (prv_test_) operan contra el entorno sandbox; las de
+// producción (prv_prod_) contra production. Se elige la base según la llave
+// para que consultarTransaccion apunte al lado correcto.
+const WOMPI_BASE_URL = (WOMPI_PRIVATE_KEY || '').startsWith('prv_test')
+  ? 'https://sandbox.wompi.co/v1'
+  : 'https://production.wompi.co/v1';
 
 
 // ------------------------------------------------------------

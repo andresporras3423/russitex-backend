@@ -128,4 +128,57 @@ router.get('/estado/:referencia', async (req, res) => {
 });
 
 
+// ------------------------------------------------------------
+// GET /api/pagos/verificar/:transaccionId
+//
+// Se llama desde la página de confirmación cuando el cliente vuelve de
+// Wompi (Wompi agrega ?id=<transaccionId> a la redirect-url). Le pregunta
+// DIRECTAMENTE a Wompi el estado real de la transacción y actualiza el
+// pedido, sin depender de que haya llegado el webhook.
+//
+// OJO: NO dispara la logística post-pago (envío/factura). Esa vive en el
+// webhook para no ejecutarla dos veces. Acá solo se confirma el estado.
+// ------------------------------------------------------------
+const ESTADO_WOMPI = {
+  APPROVED: 'APROBADO',
+  DECLINED: 'RECHAZADO',
+  VOIDED:   'ANULADO',
+  ERROR:    'ERROR',
+};
+
+router.get('/verificar/:transaccionId', async (req, res) => {
+  try {
+    const resp = await wompi.consultarTransaccion(req.params.transaccionId);
+    const tx = resp?.data;
+    if (!tx?.reference) {
+      return res.status(404).json({ error: 'Transacción no encontrada en Wompi' });
+    }
+
+    const nuevoEstado = ESTADO_WOMPI[tx.status] || 'PENDIENTE';
+    const pedido = await pedidos.buscarPorReferencia(tx.reference);
+    if (!pedido) {
+      return res.status(404).json({ error: 'Pedido no encontrado', referencia: tx.reference });
+    }
+
+    // Se actualiza solo si cambia algo (evita repisar un pedido ya APROBADO).
+    if (nuevoEstado !== 'PENDIENTE' && pedido.estado !== nuevoEstado) {
+      const datosPago = nuevoEstado === 'APROBADO'
+        ? { transaccionId: tx.id, metodoPago: tx.payment_method_type, fechaPago: new Date().toISOString() }
+        : {};
+      await pedidos.actualizarEstado(tx.reference, nuevoEstado, datosPago);
+    }
+
+    res.json({
+      referencia: tx.reference,
+      estado:     nuevoEstado,
+      total:      pedido.totalPesos,
+      cliente:    pedido.cliente?.nombre,
+    });
+  } catch (error) {
+    console.error('Error verificando transacción:', error.message);
+    res.status(500).json({ error: 'No se pudo verificar el pago' });
+  }
+});
+
+
 module.exports = router;
