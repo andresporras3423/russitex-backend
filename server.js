@@ -30,7 +30,10 @@ app.use("/api/mercadolibre", require('./routes/publicacion'));
 app.use('/api/mercadolibre', require('./routes/mercadolibre_token'));
 
 
-app.listen(3001, () => console.log('Backend en http://localhost:3001'))
+// El host de producción (Render, etc.) asigna el puerto por la variable PORT.
+// En local, si no está, usa 3001.
+const PORT = process.env.PORT || 3001
+app.listen(PORT, () => console.log(`Backend escuchando en el puerto ${PORT}`))
 
 // Red de seguridad de los avisos de reingreso. Apagada salvo que
 // AVISOS_CRON_MINUTOS esté en el .env.
