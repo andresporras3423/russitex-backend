@@ -44,10 +44,12 @@ router.post('/preparar', async (req, res) => {
       });
     }
 
-    // 1. Calcular el total del carrito (en pesos)
-    const totalPesos = carrito.reduce((suma, item) => {
+    // 1. Calcular el total: productos + envío (en pesos)
+    const totalProductos = carrito.reduce((suma, item) => {
       return suma + (item.precio * item.cantidad);
     }, 0);
+    const costoEnvio = Number(envio?.costo) || 0;   // lo calculó MiPaquete en el checkout
+    const totalPesos = totalProductos + costoEnvio;
 
     // Wompi trabaja en CENTAVOS, así que multiplicamos por 100
     const totalCentavos = totalPesos * 100;
