@@ -18,7 +18,19 @@
 const express = require('express')
 const router  = express.Router()
 const { obtenerCatalogo } = require('../services/catalogo')
-const { cotizarEnvio }    = require('../services/envios')
+const { cotizarEnvio, obtenerCiudades } = require('../services/envios')
+
+// GET /api/envios/ciudades — lista de municipios (nombre + código DANE) para
+// el selector del checkout. Cacheada en el servicio.
+router.get('/ciudades', async (req, res) => {
+  try {
+    const resultado = await obtenerCiudades()
+    res.json(resultado)
+  } catch (e) {
+    console.error('[envios] Error trayendo ciudades:', e.message)
+    res.status(502).json({ error: 'No se pudo obtener la lista de municipios. ' + e.message })
+  }
+})
 
 router.post('/cotizar', async (req, res) => {
   try {

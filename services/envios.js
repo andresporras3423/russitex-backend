@@ -162,7 +162,10 @@ async function cotizarEnvio({ carrito, destino }) {
         height: Math.ceil(pkg.altoCm),
         width:  Math.ceil(pkg.anchoCm),
         length: Math.ceil(pkg.largoCm),
-        weight: Math.ceil(pkg.pesoFacturableKg),   // kg entero
+        // Se manda el peso REAL (contenido + empaque), entero y mínimo 1 kg.
+        // MiPaquete aplica su propio peso volumétrico a partir de las dimensiones,
+        // así que NO hay que pre-inflar el peso aquí (si no, se cobra doble).
+        weight: Math.max(1, Math.ceil(pkg.pesoRealKg)),
         quantity: paquetes.length,
         declaredValue: destino.valorDeclarado || 0,
       }),
@@ -194,6 +197,27 @@ async function cotizarEnvio({ carrito, destino }) {
   }
 }
 
+// Lista de municipios de Colombia con su código DANE, desde MiPaquete.
+// Se cachea en memoria (rara vez cambia) para no pedirla en cada visita.
+let _ciudadesCache = null;
+async function obtenerCiudades() {
+  if (_ciudadesCache) return _ciudadesCache;
+  if (!MIPAQUETE_API_KEY || !MIPAQUETE_SESSION_TRACKER) {
+    return { configurado: false, ciudades: [], aviso: 'MiPaquete no configurado: no se puede traer la lista de municipios.' };
+  }
+  const res = await fetch(`${MIPAQUETE_API_URL}/getLocations`, {
+    headers: { 'apikey': MIPAQUETE_API_KEY, 'session-tracker': MIPAQUETE_SESSION_TRACKER },
+  });
+  if (!res.ok) throw new Error(`getLocations respondió ${res.status}`);
+  const data = await res.json();
+  const ciudades = (Array.isArray(data) ? data : [])
+    .map((l) => ({ dane: l.locationCode, ciudad: l.locationName, departamento: l.departmentOrStateName }))
+    .filter((c) => c.dane && c.ciudad)
+    .sort((a, b) => a.ciudad.localeCompare(b.ciudad, 'es'));
+  _ciudadesCache = { configurado: true, ciudades };
+  return _ciudadesCache;
+}
+
 // Se llama cuando se aprueba un pago: pide la recolección del paquete.
 // Sigue siendo un stub hasta tener credenciales; ahora usa calcularPaquete.
 async function solicitarRecoleccion({ referencia, cliente, envio, carrito }) {
@@ -204,4 +228,4 @@ async function solicitarRecoleccion({ referencia, cliente, envio, carrito }) {
   // TODO: llamada real a MiPaquete /shipments cuando haya MIPAQUETE_API_KEY.
 }
 
-module.exports = { calcularPaquete, cotizarEnvio, solicitarRecoleccion };
+module.exports = { calcularPaquete, cotizarEnvio, obtenerCiudades, solicitarRecoleccion };
