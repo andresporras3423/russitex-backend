@@ -121,6 +121,11 @@ async function construirCatalogo() {
         disponible,
         stockReal: p.stockReal,
 
+        // Datos físicos para cotizar el envío, por unidad de venta.
+        // (kg y cm³). Vienen de productos_meta; ver productos_meta_envio.sql.
+        pesoUnit:    meta.peso_unit ?? null,
+        volumenUnit: meta.volumen_unit ?? null,
+
         // Contenido de la página de detalle. Todo opcional: la página
         // esconde la sección que venga vacía.
         descripcion:      meta.descripcion || null,

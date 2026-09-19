@@ -11,7 +11,16 @@ const OpenAI   = require('openai')
 
 ////////////////////////////////
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+// El cliente de OpenAI se crea de forma perezosa: si OPENAI_API_KEY no está
+// configurada, el servidor igual arranca y el resto de la API funciona; solo
+// el chat responde con un error claro cuando se usa. Antes se instanciaba acá
+// al cargar el módulo y la falta de la clave tumbaba TODO el backend.
+let _openai = null
+function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) return null
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
 
 const { createClient } = require('@supabase/supabase-js')
 
@@ -175,6 +184,14 @@ router.post('/', async (req, res) => {
   }
 
   const { messages } = req.body
+
+  const openai = getOpenAI()
+  if (!openai) {
+    return res.status(503).json({
+      error: 'El asistente no está disponible por ahora. Escríbenos por WhatsApp y te ayudamos.'
+    })
+  }
+
   const start = Date.now()
 
   const systemPrompt = await construirPrompt()
