@@ -62,16 +62,29 @@ async function consultarTransaccion(transaccionId) {
 // 4. VERIFICAR FIRMA DEL WEBHOOK
 //    Cuando Wompi te avisa de un pago, debes confirmar que
 //    el aviso es auténtico y no fue fabricado por alguien más.
-//    Fórmula: SHA256( propiedades + secreto_webhook )
+//    Fórmula (docs de Wompi, "Eventos"):
+//      SHA256( valores de signature.properties, en ese orden
+//              + timestamp + secreto de eventos )
+//    Las propiedades vienen como rutas dentro de evento.data, p. ej.
+//    "transaction.id", "transaction.status", "transaction.amount_in_cents".
+//    Wompi manda el mismo checksum en signature.checksum y en el header
+//    X-Event-Checksum.
 // ------------------------------------------------------------
-function verificarFirmaWebhook(datos, firmaRecibida) {
-  const { id, status, reference, amount_in_cents, currency } = datos.transaction;
+function verificarFirmaWebhook(evento, firmaRecibida) {
+  const secreto = process.env.WOMPI_WEBHOOK_SECRET;
+  const propiedades = evento?.signature?.properties;
+  const firma = firmaRecibida || evento?.signature?.checksum;
+  if (!secreto || !Array.isArray(propiedades) || !firma || !evento.timestamp) return false;
 
-  // Wompi concatena estas propiedades en este orden exacto
-  const cadena = `${id}${status}${reference}${amount_in_cents}${currency}${process.env.WOMPI_WEBHOOK_SECRET}`;
+  const valores = propiedades.map(ruta =>
+    ruta.split('.').reduce((obj, clave) => obj?.[clave], evento.data)
+  );
+  const cadena = `${valores.join('')}${evento.timestamp}${secreto}`;
   const firmaEsperada = crypto.createHash('sha256').update(cadena).digest('hex');
 
-  return firmaEsperada === firmaRecibida;
+  const a = Buffer.from(firmaEsperada);
+  const b = Buffer.from(String(firma).toLowerCase());
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 

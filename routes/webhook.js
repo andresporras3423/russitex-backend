@@ -34,6 +34,12 @@ router.post('/wompi', async (req, res) => {
       return res.status(401).json({ error: 'Firma inválida' });
     }
 
+    // Solo nos interesan los cambios de estado de transacciones.
+    if (evento.event !== 'transaction.updated') {
+      console.log(`ℹ️  Evento ignorado: ${evento.event}`);
+      return res.status(200).json({ recibido: true });
+    }
+
     const transaccion = evento.data.transaction;
     const { reference, status, id: transaccionId } = transaccion;
 
@@ -92,41 +98,52 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
     throw new Error(`Pedido no encontrado para referencia: ${referencia}`);
   }
 
-  // Evitar procesar el mismo pago dos veces
-  if (pedido.estado === 'APROBADO') {
-    console.log(`ℹ️  Pedido ${referencia} ya fue procesado, ignorando duplicado`);
-    return;
+  // 2. Actualizar estado del pedido en tu BD.
+  //    Puede que ya esté APROBADO: /api/pagos/verificar lo marca cuando el
+  //    cliente vuelve de Wompi, muchas veces antes de que llegue este aviso.
+  if (pedido.estado !== 'APROBADO') {
+    await pedidos.actualizarEstado(referencia, 'APROBADO', {
+      transaccionId,
+      metodoPago: transaccion.payment_method_type,  // CARD, NEQUI, PSE, etc.
+      fechaPago: new Date().toISOString()
+    });
   }
-
-  // 2. Actualizar estado del pedido en tu BD
-  await pedidos.actualizarEstado(referencia, 'APROBADO', {
-    transaccionId,
-    metodoPago: transaccion.payment_method_type,  // CARD, NEQUI, PSE, etc.
-    fechaPago: new Date().toISOString()
-  });
 
   console.log(`✅ Pago aprobado para pedido ${referencia}`);
 
-  // 3. Descontar stock de los productos vendidos
-  await pedidos.descontarStock(pedido.carrito);
+  // Evitar disparar la logística dos veces (Wompi reintenta los avisos).
+  // No se usa el estado para esto porque verificar ya pudo ponerlo APROBADO.
+  if (!(await pedidos.reservarLogistica(referencia))) {
+    console.log(`ℹ️  Logística de ${referencia} ya procesada, ignorando duplicado`);
+    return;
+  }
 
-  // 4. Solicitar el envío automáticamente a MiPaquete
-  //    El repartidor se agenda solo para recoger en tu dirección
-  await envios.solicitarRecoleccion({
-    referencia,
-    cliente:  pedido.cliente,
-    envio:    pedido.envio,
-    carrito:  pedido.carrito
-  });
+  try {
+    // 3. Descontar stock de los productos vendidos
+    await pedidos.descontarStock(pedido.carrito);
 
-  // 5. Generar factura electrónica en Alegra
-  await alegra.generarFactura({
-    referencia,
-    cliente:    pedido.cliente,
-    carrito:    pedido.carrito,
-    totalPesos: pedido.totalPesos,
-    metodoPago: transaccion.payment_method_type
-  });
+    // 4. Solicitar el envío automáticamente a MiPaquete
+    //    El repartidor se agenda solo para recoger en tu dirección
+    await envios.solicitarRecoleccion({
+      referencia,
+      cliente:  pedido.cliente,
+      envio:    pedido.envio,
+      carrito:  pedido.carrito
+    });
+
+    // 5. Generar factura electrónica en Alegra
+    await alegra.generarFactura({
+      referencia,
+      cliente:    pedido.cliente,
+      carrito:    pedido.carrito,
+      totalPesos: pedido.totalPesos,
+      metodoPago: transaccion.payment_method_type
+    });
+  } catch (error) {
+    // Soltamos la reserva para que el reintento de Wompi lo vuelva a intentar.
+    await pedidos.liberarLogistica(referencia);
+    throw error;
+  }
 
   console.log(`🧾 Factura generada y envío solicitado para pedido ${referencia}`);
 }

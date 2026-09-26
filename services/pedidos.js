@@ -96,6 +96,39 @@ async function buscarPorReferencia(referencia) {
 
 
 // ------------------------------------------------------------
+// Reservar la logística post-pago de un pedido (una sola vez).
+// Marca logistica_procesada_en solo si estaba vacío, en un único UPDATE,
+// así dos webhooks simultáneos (Wompi reintenta) no la disparan dos veces.
+// Devuelve true si este llamado la reservó, false si ya estaba hecha.
+// ------------------------------------------------------------
+async function reservarLogistica(referencia) {
+  const { data, error } = await supabaseAdmin()
+    .from('pedidos')
+    .update({ logistica_procesada_en: new Date().toISOString() })
+    .eq('referencia', referencia)
+    .is('logistica_procesada_en', null)
+    .select('referencia')
+
+  if (error) throw new Error(`No se pudo reservar la logística de ${referencia}: ${error.message}`)
+  return data.length > 0
+}
+
+
+// ------------------------------------------------------------
+// Liberar la reserva si la logística falló, para que el reintento de
+// Wompi la vuelva a intentar.
+// ------------------------------------------------------------
+async function liberarLogistica(referencia) {
+  const { error } = await supabaseAdmin()
+    .from('pedidos')
+    .update({ logistica_procesada_en: null })
+    .eq('referencia', referencia)
+
+  if (error) console.error(`No se pudo liberar la logística de ${referencia}: ${error.message}`)
+}
+
+
+// ------------------------------------------------------------
 // Descontar stock de los productos vendidos.
 // TODO (tarea aparte): conectar con el inventario real. Por ahora loguea.
 // ------------------------------------------------------------
@@ -124,6 +157,8 @@ module.exports = {
   crearPendiente,
   actualizarEstado,
   buscarPorReferencia,
+  reservarLogistica,
+  liberarLogistica,
   descontarStock,
   listarTodos,
 }
