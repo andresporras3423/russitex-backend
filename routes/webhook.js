@@ -169,7 +169,10 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
 // POST /api/webhook/envia
 //
 // Envia llama aquí cuando cambia el estado de un envío (webhook de tipo
-// "tracking.simple", registrado en shipping.envia.com/settings/developers).
+// "simpleTracking", registrado en shipping.envia.com/settings/developers).
+// Se guarda el estado en el pedido y, si hay un problema (dirección
+// errada, rechazado, perdido...), se le avisa a la tienda. Los correos de
+// avance al cliente los manda Envia directamente.
 //
 // No se confía en el estado que trae el aviso: en producción se le
 // pregunta a Envia con nuestra llave. Así un aviso falso, como mucho,
@@ -243,16 +246,14 @@ async function procesarAvisoEnvia(aviso) {
   const guiaActual = { ...guia, estado, estadoActualizadoEn: new Date().toISOString() };
   await pedidos.guardarGuia(pedido.referencia, guiaActual);
 
-  // Cada aviso se manda una sola vez aunque Envia repita el estado.
+  // Al cliente le avisa Envia (en camino, entregado...). Aquí solo se avisa
+  // a la tienda cuando hay una novedad, una sola vez por cada estado.
   const avisos = new Set(guia.avisos || []);
-  let enviado = false;
-  if (categoria === 'novedad') {
-    const clave = `novedad:${estado}`;
-    if (!avisos.has(clave) && await notificaciones.avisarNovedadAlmacen(pedido, estado)) { avisos.add(clave); enviado = true; }
-  } else if (categoria && !avisos.has(categoria)) {
-    if (await notificaciones.avisarEstadoEnvio(pedido, categoria)) { avisos.add(categoria); enviado = true; }
+  const clave = `novedad:${estado}`;
+  if (categoria === 'novedad' && !avisos.has(clave) && await notificaciones.avisarNovedadAlmacen(pedido, estado)) {
+    avisos.add(clave);
+    await pedidos.guardarGuia(pedido.referencia, { ...guiaActual, avisos: [...avisos] });
   }
-  if (enviado) await pedidos.guardarGuia(pedido.referencia, { ...guiaActual, avisos: [...avisos] });
 }
 
 

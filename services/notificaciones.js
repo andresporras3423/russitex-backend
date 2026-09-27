@@ -3,12 +3,13 @@
 //
 //    - avisarPedidoAprobado(pedido): al aprobarse el pago. Lleva el
 //      resumen de la compra y, si ya hay guía, el número y el rastreo.
-//    - avisarEstadoEnvio(pedido, aviso): cuando el envío cambia de etapa
-//      (en camino, en reparto, en oficina, entregado).
 //    - avisarNovedadAlmacen(pedido, estado): a la tienda (no al cliente)
 //      cuando el envío tiene un problema, para que lo llamen.
 //
-//  Usan services/correo.js (Zoho). Si el correo falla NO se lanza el
+//  Los avisos de avance del envío (en camino, entregado...) al cliente los
+//  manda Envia por su cuenta, con la marca de la tienda; aquí no se repiten.
+//
+//  Usan services/correo.js (Resend o SMTP). Si el correo falla NO se lanza el
 //  error: un correo que no sale no debe tumbar el pago ni el envío.
 // ============================================================
 const { enviarCorreo, configurado } = require('./correo')
@@ -123,8 +124,8 @@ function armarCorreoPedidoAprobado(pedido, contacto) {
       <p style="font-size:15px;line-height:1.55">Lo enviamos a <strong>${escaparHtml(destino)}</strong>${pedido.envio?.transportadora ? ` con ${escaparHtml(pedido.envio.transportadora)}` : ''}.</p>
       <p style="font-size:15px;margin:4px 0">Número de guía: <strong>${escaparHtml(guia.numeroGuia)}</strong></p>
       ${guia.rastreoUrl ? boton(guia.rastreoUrl, 'Rastrear mi envío') : ''}
-      <p style="font-size:13px;color:${COLOR.suave}">Te escribiremos cuando tu pedido salga en camino y cuando se entregue.</p>`
-    entregaTexto = `Lo enviamos a ${destino}${pedido.envio?.transportadora ? ` con ${pedido.envio.transportadora}` : ''}.\nNúmero de guía: ${guia.numeroGuia}${guia.rastreoUrl ? `\nRastreo: ${guia.rastreoUrl}` : ''}\nTe escribiremos cuando tu pedido salga en camino y cuando se entregue.`
+      <p style="font-size:13px;color:${COLOR.suave}">Te llegarán correos con cada avance del envío.</p>`
+    entregaTexto = `Lo enviamos a ${destino}${pedido.envio?.transportadora ? ` con ${pedido.envio.transportadora}` : ''}.\nNúmero de guía: ${guia.numeroGuia}${guia.rastreoUrl ? `\nRastreo: ${guia.rastreoUrl}` : ''}\nTe llegarán correos con cada avance del envío.`
   } else {
     const destino = [pedido.envio?.direccion, pedido.envio?.ciudad].filter(Boolean).join(', ')
     entregaHtml = `<p style="font-size:15px;line-height:1.55">Lo enviaremos a <strong>${escaparHtml(destino)}</strong>. Cuando lo despachemos te mandamos el número de guía para que lo rastrees.</p>`
@@ -156,68 +157,12 @@ async function avisarPedidoAprobado(pedido) {
   return enviarSeguro(`pedido aprobado ${pedido.referencia}`, {
     destino: pedido.cliente?.email, asunto, html, texto,
     responderA: process.env.CORREO_DESTINO || undefined,
+    idempotencia: `aprobado-${pedido.referencia}`,
   })
 }
 
 // ------------------------------------------------------------
-// 2. Cambios de etapa del envío
-// ------------------------------------------------------------
-const MENSAJES_ENVIO = {
-  en_camino: {
-    asunto:  (ref) => `Tu pedido ${ref} va en camino`,
-    titulo:  'Tu pedido va en camino',
-    parrafo: 'La transportadora ya recogió tu paquete y va rumbo a tu dirección.',
-  },
-  en_reparto: {
-    asunto:  (ref) => `Tu pedido ${ref} llega hoy`,
-    titulo:  'Tu pedido llega hoy',
-    parrafo: 'Tu paquete salió a reparto: el mensajero lo lleva hoy a tu dirección. Procura que alguien pueda recibirlo.',
-  },
-  en_oficina: {
-    asunto:  (ref) => `Tu pedido ${ref} está en la oficina de la transportadora`,
-    titulo:  'Tu pedido te espera en la oficina de la transportadora',
-    parrafo: 'Tu paquete quedó en una oficina de la transportadora para que lo recojas. Con el número de guía puedes ver cuál es y su horario.',
-  },
-  entregado: {
-    asunto:  (ref) => `Tu pedido ${ref} fue entregado`,
-    titulo:  '¡Tu pedido fue entregado!',
-    parrafo: 'La transportadora reporta tu paquete como entregado. Esperamos que lo disfrutes. Si algo no llegó bien, escríbenos.',
-  },
-}
-
-function armarCorreoEstadoEnvio(pedido, aviso, contacto) {
-  const m = MENSAJES_ENVIO[aviso]
-  const guia = pedido.guia || {}
-  const nombre = primerNombre(pedido.cliente?.nombre)
-  const html = plantilla({
-    titulo: m.titulo,
-    contacto,
-    cuerpoHtml: `
-      ${nombre ? `<p style="font-size:15px;margin:0 0 8px">Hola ${escaparHtml(nombre)},</p>` : ''}
-      <p style="font-size:15px;line-height:1.55">${escaparHtml(m.parrafo)}</p>
-      <p style="font-size:15px;margin:4px 0">Pedido <strong>${escaparHtml(pedido.referencia)}</strong> · Guía <strong>${escaparHtml(guia.numeroGuia)}</strong>${pedido.envio?.transportadora ? ` (${escaparHtml(pedido.envio.transportadora)})` : ''}</p>
-      ${guia.rastreoUrl ? boton(guia.rastreoUrl, 'Ver el rastreo') : ''}`,
-  })
-  const texto = [
-    m.titulo, '', ...(nombre ? [`Hola ${nombre},`] : []), m.parrafo,
-    `Pedido ${pedido.referencia} · Guía ${guia.numeroGuia}`,
-    guia.rastreoUrl ? `Rastreo: ${guia.rastreoUrl}` : '',
-  ].join('\n')
-  return { asunto: m.asunto(pedido.referencia), html, texto }
-}
-
-async function avisarEstadoEnvio(pedido, aviso) {
-  if (!MENSAJES_ENVIO[aviso]) return false
-  const contacto = await contactoTienda()
-  const { asunto, html, texto } = armarCorreoEstadoEnvio(pedido, aviso, contacto)
-  return enviarSeguro(`envío ${aviso} ${pedido.referencia}`, {
-    destino: pedido.cliente?.email, asunto, html, texto,
-    responderA: process.env.CORREO_DESTINO || undefined,
-  })
-}
-
-// ------------------------------------------------------------
-// 3. Novedad del envío (a la tienda, no al cliente)
+// 2. Novedad del envío (a la tienda, no al cliente)
 // ------------------------------------------------------------
 async function avisarNovedadAlmacen(pedido, estado) {
   const guia = pedido.guia || {}
@@ -238,14 +183,13 @@ async function avisarNovedadAlmacen(pedido, estado) {
     asunto: `Novedad en el envío del pedido ${pedido.referencia}: ${estado}`,
     texto, html,
     responderA: c.email || undefined,
+    idempotencia: `novedad-${pedido.referencia}-${estado}`.replace(/[^A-Za-z0-9_-]/g, '_'),
   })
 }
 
 module.exports = {
   avisarPedidoAprobado,
-  avisarEstadoEnvio,
   avisarNovedadAlmacen,
   // Para revisar cómo quedan los correos sin enviarlos.
   armarCorreoPedidoAprobado,
-  armarCorreoEstadoEnvio,
 }
