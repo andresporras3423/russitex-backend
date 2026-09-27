@@ -122,14 +122,18 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
     // 3. Descontar stock de los productos vendidos
     await pedidos.descontarStock(pedido.carrito);
 
-    // 4. Solicitar el envío automáticamente a MiPaquete
-    //    El repartidor se agenda solo para recoger en tu dirección
-    await envios.solicitarRecoleccion({
-      referencia,
-      cliente:  pedido.cliente,
-      envio:    pedido.envio,
-      carrito:  pedido.carrito
-    });
+    // 4. Crear la guía en Envia y guardarla en el pedido. Si ya tiene guía
+    //    (un reintento después de que falló un paso posterior), no se crea
+    //    otra: cada guía real cuesta.
+    if (!pedido.guia) {
+      const guia = await envios.crearEnvio({
+        referencia,
+        cliente:  pedido.cliente,
+        envio:    pedido.envio,
+        carrito:  pedido.carrito
+      });
+      if (guia) await pedidos.guardarGuia(referencia, guia);
+    }
 
     // 5. Generar factura electrónica en Alegra
     await alegra.generarFactura({

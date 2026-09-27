@@ -27,6 +27,7 @@ function aPedido(fila) {
     transaccionId: fila.transaccion_id,
     metodoPago:    fila.metodo_pago,
     fechaPago:     fila.fecha_pago,
+    guia:          fila.guia ?? null,
     creadoEn:      fila.creado_en,
     actualizadoEn: fila.actualizado_en,
   }
@@ -129,6 +130,19 @@ async function liberarLogistica(referencia) {
 
 
 // ------------------------------------------------------------
+// Guardar la guía de envío (número, etiqueta PDF, rastreo) en el pedido.
+// ------------------------------------------------------------
+async function guardarGuia(referencia, guia) {
+  const { error } = await supabaseAdmin()
+    .from('pedidos')
+    .update({ guia, actualizado_en: new Date().toISOString() })
+    .eq('referencia', referencia)
+
+  if (error) throw new Error(`No se pudo guardar la guía de ${referencia}: ${error.message}`)
+}
+
+
+// ------------------------------------------------------------
 // Descontar stock de los productos vendidos.
 // TODO (tarea aparte): conectar con el inventario real. Por ahora loguea.
 // ------------------------------------------------------------
@@ -159,6 +173,7 @@ module.exports = {
   buscarPorReferencia,
   reservarLogistica,
   liberarLogistica,
+  guardarGuia,
   descontarStock,
   listarTodos,
 }

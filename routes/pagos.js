@@ -5,6 +5,7 @@ const express  = require('express');
 const router   = express.Router();
 const wompi    = require('../services/wompi');
 const pedidos  = require('../services/pedidos');   // tu lógica de BD
+const envios   = require('../services/envios');
 
 
 // ------------------------------------------------------------
@@ -27,18 +28,26 @@ const pedidos  = require('../services/pedidos');   // tu lógica de BD
 //     telefono: "3001234567"
 //   },
 //   envio: {
+//     modalidad: "domicilio",          // o "tienda" (recoge en el local)
 //     ciudad: "Bogotá",
-//     direccion: "Calle 123 #45-67",
-//     departamento: "Cundinamarca"
+//     direccion: "Calle 123 #45-67",   // solo para domicilio
+//     departamento: "Cundinamarca",
+//     codigoDane: "11001000"           // solo para domicilio
 //   }
 // }
 // ------------------------------------------------------------
 router.post('/preparar', async (req, res) => {
   try {
-    const { carrito, cliente, envio } = req.body;
+    const { carrito, cliente } = req.body;
+    let envio = req.body.envio || {};
+
+    // Sin "modalidad" (checkout viejo en caché) se deduce del costo enviado.
+    const domicilio = envio.modalidad
+      ? envio.modalidad === 'domicilio'
+      : Number(envio.costo) > 0;
 
     // Validación básica
-    if (!carrito?.length || !cliente?.email || !envio?.direccion) {
+    if (!carrito?.length || !cliente?.email || (domicilio && (!envio.direccion || !envio.codigoDane))) {
       return res.status(400).json({
         error: 'Faltan datos: carrito, cliente o dirección de envío'
       });
@@ -48,7 +57,32 @@ router.post('/preparar', async (req, res) => {
     const totalProductos = carrito.reduce((suma, item) => {
       return suma + (item.precio * item.cantidad);
     }, 0);
-    const costoEnvio = Number(envio?.costo) || 0;   // lo calculó MiPaquete en el checkout
+
+    // El envío se vuelve a cotizar ACÁ: no se confía en el costo que manda el
+    // navegador. La cotización del checkout queda guardada unos minutos, así
+    // que normalmente es la misma y responde al instante.
+    let costoEnvio = 0;
+    if (domicilio) {
+      const { lineas } = await envios.resolverCarrito(carrito);
+      const { cotizacion, aviso } = await envios.cotizarEnvio({
+        carrito: lineas,
+        destino: { codigoDane: envio.codigoDane, valorDeclarado: totalProductos },
+      });
+      if (!cotizacion) {
+        return res.status(422).json({ error: aviso || 'No se pudo calcular el envío para esa ciudad.' });
+      }
+      costoEnvio = Math.round(cotizacion.costoTotal);   // Wompi va en centavos enteros
+      envio = {
+        ...envio,
+        modalidad: 'domicilio',
+        costo: costoEnvio,
+        transportadora: cotizacion.transportadora,
+        carrier: cotizacion.carrier,
+        servicio: cotizacion.servicio,
+      };
+    } else {
+      envio = { ...envio, modalidad: 'tienda', costo: 0, codigoDane: null, transportadora: null };
+    }
     const totalPesos = totalProductos + costoEnvio;
 
     // Wompi trabaja en CENTAVOS, así que multiplicamos por 100
