@@ -1,6 +1,7 @@
 // ============================================================
 //  routes/webhook.js  —  Wompi avisa aquí cuando hay un pago
 // ============================================================
+const crypto  = require('crypto');
 const express = require('express');
 const router  = express.Router();
 const wompi   = require('../services/wompi');
@@ -174,13 +175,37 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
 // estado en el sandbox, así que para ellas se usa el del aviso y se puede
 // probar con la herramienta "webhooktest" de Envia.)
 //
-// Si ENVIA_WEBHOOK_TOKEN está definido, se exige como "Authorization:
-// Bearer <token>" (Envia lo permite configurar en el webhook).
+// Firma: si ENVIA_WEBHOOK_SECRET está definido (el "Secreto de firma" del
+// webhook en el panel de Envia) y el aviso trae X-Webhook-Signature, se
+// verifica y se rechaza si no coincide. Los avisos sin firma (el botón
+// "Probar" y la herramienta webhooktest de Envia no firman) se aceptan,
+// porque en producción el estado igual se le pregunta a Envia.
 // ------------------------------------------------------------
+
+// Envia valida la URL con "Probar" sin mandar un aviso: basta un 200.
+router.get('/envia', (req, res) => res.status(200).json({ ok: true }));
+
+// v1=HMAC-SHA256(timestamp + "." + evento + "." + cuerpo, secreto), en hex.
+function firmaEnviaValida(req) {
+  const secreto = process.env.ENVIA_WEBHOOK_SECRET;
+  const firma = req.headers['x-webhook-signature'];
+  if (!secreto || !firma) return true;   // sin secreto o sin firma: ver arriba
+
+  const ts = req.headers['x-webhook-timestamp'] || '';
+  const evento = req.headers['x-webhook-event'] || '';
+  const cuerpo = req.cuerpoCrudo ? req.cuerpoCrudo.toString('utf8') : JSON.stringify(req.body);
+  const esperada = crypto.createHmac('sha256', secreto).update(`${ts}.${evento}.${cuerpo}`).digest('hex');
+
+  const recibida = String(firma).replace(/^v1=/, '').toLowerCase();
+  const a = Buffer.from(esperada);
+  const b = Buffer.from(recibida);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 router.post('/envia', (req, res) => {
-  const token = process.env.ENVIA_WEBHOOK_TOKEN;
-  if (token && req.headers.authorization !== `Bearer ${token}`) {
-    return res.status(401).json({ error: 'No autorizado' });
+  if (!firmaEnviaValida(req)) {
+    console.warn('⚠️  [envia] Aviso con firma inválida, rechazado');
+    return res.status(401).json({ error: 'Firma inválida' });
   }
 
   // Envia pide responder rápido; el trabajo se hace después.

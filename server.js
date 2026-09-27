@@ -14,7 +14,9 @@ app.use(cors())
 // 10 MB de imagen -> ~13.4 MB en base64, más el resto del formulario.
 app.use('/api/asesoria', express.json({ limit: '15mb' }), require('./routes/asesoria')); // ✉️ Formulario de asesoría
 
-app.use(express.json())
+// Se guarda también el cuerpo tal cual llegó: la firma de los avisos de
+// Envia se calcula sobre esos bytes exactos, no sobre el JSON re-armado.
+app.use(express.json({ verify: (req, res, buf) => { req.cuerpoCrudo = buf } }))
 
 
 // Rutas
