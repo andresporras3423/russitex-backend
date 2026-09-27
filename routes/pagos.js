@@ -152,7 +152,8 @@ router.get('/estado/:referencia', async (req, res) => {
       referencia: pedido.referencia,
       estado:     pedido.estado,        // PENDIENTE | APROBADO | RECHAZADO
       total:      pedido.totalPesos,
-      cliente:    pedido.cliente.nombre
+      cliente:    pedido.cliente.nombre,
+      modalidad:  pedido.envio?.modalidad || null   // domicilio | tienda
     });
 
   } catch (error) {
@@ -207,6 +208,7 @@ router.get('/verificar/:transaccionId', async (req, res) => {
       estado:     nuevoEstado,
       total:      pedido.totalPesos,
       cliente:    pedido.cliente?.nombre,
+      modalidad:  pedido.envio?.modalidad || null,
     });
   } catch (error) {
     console.error('Error verificando transacción:', error.message);

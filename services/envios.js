@@ -422,4 +422,47 @@ async function crearEnvio({ referencia, cliente, envio, carrito }) {
   };
 }
 
-module.exports = { calcularPaquete, resolverCarrito, cotizarEnvio, obtenerCiudades, crearEnvio };
+// ------------------------------------------------------------
+// Rastreo
+// ------------------------------------------------------------
+
+/**
+ * Estado actual de una guía según Envia (p. ej. "Created", "Picked Up",
+ * "Delivered"). Devuelve null si no se pudo consultar.
+ */
+async function consultarRastreo(ambiente, numeroGuia) {
+  try {
+    const { datos } = await llamarEnvia(ambiente, '/ship/generaltrack/', { trackingNumbers: [numeroGuia] });
+    return datos?.data?.[0]?.status || null;
+  } catch (e) {
+    console.warn(`[envios] No se pudo consultar el rastreo de ${numeroGuia}: ${e.message}`);
+    return null;
+  }
+}
+
+// Catálogo de estados de Envia (docs "Track Shipments") agrupado en lo que
+// le importa al cliente. Lo que no aparece (Created, Information, Pending,
+// Out for Pickup...) no dispara ningún aviso.
+const CATEGORIA_ESTADO = {
+  shipped: 'en_camino', pickedup: 'en_camino', partiallyshipped: 'en_camino',
+  outfordelivery: 'en_reparto',
+  pickupatoffice: 'en_oficina',
+  delivered: 'entregado',
+  // Problemas: se avisa a la tienda, no al cliente.
+  canceled: 'novedad', lost: 'novedad', returned: 'novedad', deliveredatorigin: 'novedad',
+  damaged: 'novedad', redirected: 'novedad', '1deliveryattempt': 'novedad',
+  '2deliveryattempts': 'novedad', '3deliveryattempts': 'novedad', returnproblem: 'novedad',
+  addresserror: 'novedad', undeliverable: 'novedad', delayed: 'novedad', rejected: 'novedad',
+  partiallydelivered: 'novedad', deliveryattempt: 'novedad',
+};
+
+// "Out for Delivery", "out_for_delivery" y "outfordelivery" cuentan igual.
+function categoriaDeEstado(estado) {
+  const clave = String(estado || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return CATEGORIA_ESTADO[clave] || null;
+}
+
+module.exports = {
+  calcularPaquete, resolverCarrito, cotizarEnvio, obtenerCiudades, crearEnvio,
+  consultarRastreo, categoriaDeEstado,
+};

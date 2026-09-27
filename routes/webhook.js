@@ -7,6 +7,7 @@ const wompi   = require('../services/wompi');
 const pedidos = require('../services/pedidos');
 const envios  = require('../services/envios');
 const alegra  = require('../services/alegra');
+const notificaciones = require('../services/notificaciones');
 
 
 // ------------------------------------------------------------
@@ -132,7 +133,10 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
         envio:    pedido.envio,
         carrito:  pedido.carrito
       });
-      if (guia) await pedidos.guardarGuia(referencia, guia);
+      if (guia) {
+        await pedidos.guardarGuia(referencia, guia);
+        pedido.guia = guia;   // para el correo de confirmación
+      }
     }
 
     // 5. Generar factura electrónica en Alegra
@@ -150,6 +154,78 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
   }
 
   console.log(`🧾 Factura generada y envío solicitado para pedido ${referencia}`);
+
+  // 6. Correo de confirmación al cliente (con la guía si ya existe). Va al
+  //    final y fuera del try: solo sale cuando todo lo anterior funcionó, una
+  //    sola vez, y si el correo falla no se reintenta la logística.
+  await notificaciones.avisarPedidoAprobado(pedido);
+}
+
+
+// ------------------------------------------------------------
+// POST /api/webhook/envia
+//
+// Envia llama aquí cuando cambia el estado de un envío (webhook de tipo
+// "tracking.simple", registrado en shipping.envia.com/settings/developers).
+//
+// No se confía en el estado que trae el aviso: en producción se le
+// pregunta a Envia con nuestra llave. Así un aviso falso, como mucho,
+// hace que se refresque el estado. (Las guías de PRUEBAS nunca cambian de
+// estado en el sandbox, así que para ellas se usa el del aviso y se puede
+// probar con la herramienta "webhooktest" de Envia.)
+//
+// Si ENVIA_WEBHOOK_TOKEN está definido, se exige como "Authorization:
+// Bearer <token>" (Envia lo permite configurar en el webhook).
+// ------------------------------------------------------------
+router.post('/envia', (req, res) => {
+  const token = process.env.ENVIA_WEBHOOK_TOKEN;
+  if (token && req.headers.authorization !== `Bearer ${token}`) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+
+  // Envia pide responder rápido; el trabajo se hace después.
+  res.status(200).json({ recibido: true });
+  procesarAvisoEnvia(req.body).catch((e) => console.error('[envia] Error procesando aviso:', e.message));
+});
+
+async function procesarAvisoEnvia(aviso) {
+  const datos = aviso?.data || aviso || {};
+  const numeroGuia = datos.tracking_number || datos.trackingNumber;
+  if (!numeroGuia) {
+    console.warn('[envia] Aviso sin número de guía:', JSON.stringify(aviso).slice(0, 300));
+    return;
+  }
+
+  const pedido = await pedidos.buscarPorGuia(numeroGuia);
+  if (!pedido) {
+    console.log(`[envia] Guía ${numeroGuia} no corresponde a ningún pedido; se ignora.`);
+    return;
+  }
+
+  const guia = pedido.guia;
+  const estado = guia.ambiente === 'produccion'
+    ? await envios.consultarRastreo('produccion', numeroGuia)
+    : (datos.status || await envios.consultarRastreo('pruebas', numeroGuia));
+  if (!estado) return;
+
+  const categoria = envios.categoriaDeEstado(estado);
+  console.log(`🚚 [envia] ${pedido.referencia} · guía ${numeroGuia}: ${estado} (${categoria || 'sin aviso'})`);
+
+  // Cada aviso se manda una sola vez aunque Envia repita el estado.
+  const avisos = new Set(guia.avisos || []);
+  if (categoria === 'novedad') {
+    const clave = `novedad:${estado}`;
+    if (!avisos.has(clave) && await notificaciones.avisarNovedadAlmacen(pedido, estado)) avisos.add(clave);
+  } else if (categoria && !avisos.has(categoria)) {
+    if (await notificaciones.avisarEstadoEnvio(pedido, categoria)) avisos.add(categoria);
+  }
+
+  await pedidos.guardarGuia(pedido.referencia, {
+    ...guia,
+    estado,
+    estadoActualizadoEn: new Date().toISOString(),
+    avisos: [...avisos],
+  });
 }
 
 

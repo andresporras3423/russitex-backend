@@ -130,6 +130,21 @@ async function liberarLogistica(referencia) {
 
 
 // ------------------------------------------------------------
+// Buscar el pedido de una guía de envío. Devuelve null si no existe.
+// ------------------------------------------------------------
+async function buscarPorGuia(numeroGuia) {
+  const { data, error } = await supabaseAdmin()
+    .from('pedidos')
+    .select('*')
+    .eq('guia->>numeroGuia', numeroGuia)
+    .maybeSingle()
+
+  if (error) throw new Error(`No se pudo buscar la guía ${numeroGuia}: ${error.message}`)
+  return aPedido(data)
+}
+
+
+// ------------------------------------------------------------
 // Guardar la guía de envío (número, etiqueta PDF, rastreo) en el pedido.
 // ------------------------------------------------------------
 async function guardarGuia(referencia, guia) {
@@ -173,6 +188,7 @@ module.exports = {
   buscarPorReferencia,
   reservarLogistica,
   liberarLogistica,
+  buscarPorGuia,
   guardarGuia,
   descontarStock,
   listarTodos,
