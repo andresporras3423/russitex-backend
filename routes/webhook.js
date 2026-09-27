@@ -159,7 +159,9 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
   // 6. Correo de confirmación al cliente (con la guía si ya existe). Va al
   //    final y fuera del try: solo sale cuando todo lo anterior funcionó, una
   //    sola vez, y si el correo falla no se reintenta la logística.
-  await notificaciones.avisarPedidoAprobado(pedido);
+  //    No se espera: Wompi necesita su 200 rápido y un correo lento haría
+  //    que reintente el aviso. (avisarPedidoAprobado nunca lanza error.)
+  notificaciones.avisarPedidoAprobado(pedido);
 }
 
 
@@ -236,21 +238,21 @@ async function procesarAvisoEnvia(aviso) {
   const categoria = envios.categoriaDeEstado(estado);
   console.log(`🚚 [envia] ${pedido.referencia} · guía ${numeroGuia}: ${estado} (${categoria || 'sin aviso'})`);
 
+  // El estado se guarda primero: si el correo tarda o falla, el pedido ya
+  // queda al día.
+  const guiaActual = { ...guia, estado, estadoActualizadoEn: new Date().toISOString() };
+  await pedidos.guardarGuia(pedido.referencia, guiaActual);
+
   // Cada aviso se manda una sola vez aunque Envia repita el estado.
   const avisos = new Set(guia.avisos || []);
+  let enviado = false;
   if (categoria === 'novedad') {
     const clave = `novedad:${estado}`;
-    if (!avisos.has(clave) && await notificaciones.avisarNovedadAlmacen(pedido, estado)) avisos.add(clave);
+    if (!avisos.has(clave) && await notificaciones.avisarNovedadAlmacen(pedido, estado)) { avisos.add(clave); enviado = true; }
   } else if (categoria && !avisos.has(categoria)) {
-    if (await notificaciones.avisarEstadoEnvio(pedido, categoria)) avisos.add(categoria);
+    if (await notificaciones.avisarEstadoEnvio(pedido, categoria)) { avisos.add(categoria); enviado = true; }
   }
-
-  await pedidos.guardarGuia(pedido.referencia, {
-    ...guia,
-    estado,
-    estadoActualizadoEn: new Date().toISOString(),
-    avisos: [...avisos],
-  });
+  if (enviado) await pedidos.guardarGuia(pedido.referencia, { ...guiaActual, avisos: [...avisos] });
 }
 
 

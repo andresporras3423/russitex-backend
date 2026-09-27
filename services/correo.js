@@ -35,6 +35,12 @@ function obtenerTransporte() {
       port: puerto,
       secure: puerto === 465,   // 465 = SSL directo; 587 = STARTTLS
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      // Los valores por defecto de nodemailer esperan hasta minutos: si el
+      // servidor no responde (p. ej. el plan gratis de Render bloquea el
+      // puerto), mejor fallar rápido.
+      connectionTimeout: 15000,
+      greetingTimeout:   10000,
+      socketTimeout:     20000,
     })
   }
   return transporte
