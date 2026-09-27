@@ -157,7 +157,6 @@ async function avisarPedidoAprobado(pedido) {
   return enviarSeguro(`pedido aprobado ${pedido.referencia}`, {
     destino: pedido.cliente?.email, asunto, html, texto,
     responderA: process.env.CORREO_DESTINO || undefined,
-    idempotencia: `aprobado-${pedido.referencia}`,
   })
 }
 
@@ -183,7 +182,6 @@ async function avisarNovedadAlmacen(pedido, estado) {
     asunto: `Novedad en el envío del pedido ${pedido.referencia}: ${estado}`,
     texto, html,
     responderA: c.email || undefined,
-    idempotencia: `novedad-${pedido.referencia}-${estado}`.replace(/[^A-Za-z0-9_-]/g, '_'),
   })
 }
 

@@ -101,8 +101,8 @@ function armarCorreo(d, imagen = 'ninguna') {
           </tr>`).join('')}
       </table>
       <p style="font-size:12px;color:#6E665C;margin-top:18px">
-        Podés responder este correo directamente — le llega a ${escaparHtml(d.correo)} —
-        o escribirle al celular ${escaparHtml(d.wa)}.
+        Para contestarle, escríbele a <a href="mailto:${escaparHtml(d.correo)}">${escaparHtml(d.correo)}</a> o al celular ${escaparHtml(d.wa)}.
+        (Si le das "Responder" a este correo, puede que la respuesta te llegue a ti y no al cliente.)
       </p>
     </div>`
 
