@@ -24,6 +24,8 @@ function escaparHtml(s) {
 }
 
 const pesos = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO')
+// "Entretela doble punto · Negro": la variante (color) importa para el pedido.
+const nombreItem = (i) => (i.variante ? `${i.nombre} · ${i.variante}` : i.nombre)
 const primerNombre = (nombre) => String(nombre || '').trim().split(/\s+/)[0] || ''
 
 // WhatsApp, horarios y dirección (solo si ya está definida) del almacén.
@@ -66,7 +68,7 @@ function boton(url, texto) {
 function tablaProductos(pedido) {
   const filas = (pedido.carrito || []).map((i) => `
     <tr>
-      <td style="padding:8px 10px;border-bottom:1px solid ${COLOR.borde}">${escaparHtml(i.nombre)} × ${escaparHtml(i.cantidad)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid ${COLOR.borde}">${escaparHtml(nombreItem(i))} × ${escaparHtml(i.cantidad)}</td>
       <td style="padding:8px 10px;border-bottom:1px solid ${COLOR.borde};text-align:right;white-space:nowrap">${pesos((i.precio || 0) * (i.cantidad || 1))}</td>
     </tr>`).join('')
   const envio = Number(pedido.envio?.costo) || 0
@@ -80,7 +82,7 @@ function tablaProductos(pedido) {
 }
 
 function textoProductos(pedido) {
-  const lineas = (pedido.carrito || []).map((i) => `- ${i.nombre} x ${i.cantidad}: ${pesos((i.precio || 0) * (i.cantidad || 1))}`)
+  const lineas = (pedido.carrito || []).map((i) => `- ${nombreItem(i)} x ${i.cantidad}: ${pesos((i.precio || 0) * (i.cantidad || 1))}`)
   const envio = Number(pedido.envio?.costo) || 0
   return [...lineas, `Envío: ${envio ? pesos(envio) : 'Gratis'}`, `Total pagado: ${pesos(pedido.totalPesos)}`].join('\n')
 }

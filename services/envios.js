@@ -22,6 +22,7 @@
 // ============================================================
 const { municipios } = require('../data/municipios-co.json');
 const { obtenerCatalogo } = require('./catalogo');
+const { umbralEnvioGratis } = require('./tienda');
 
 const ENVIA = {
   produccion: {
@@ -283,6 +284,17 @@ async function resolverCarrito(carrito) {
 const _cotizaciones = new Map();
 const VIGENCIA_COTIZACION_MS = 10 * 60 * 1000;
 
+// Envío gratis: si el subtotal llega al umbral de tienda_info, el cliente
+// paga $0. La transportadora y el servicio se conservan porque la guía se
+// crea igual (la paga la tienda); costoReal queda como referencia.
+async function aplicarEnvioGratis(resultado, subtotal) {
+  const c = resultado.cotizacion;
+  if (!c) return resultado;
+  const umbral = await umbralEnvioGratis().catch(() => null);
+  if (!umbral || !(Number(subtotal) >= umbral)) return resultado;
+  return { ...resultado, cotizacion: { ...c, costoTotal: 0, costoReal: c.costoTotal, envioGratis: true } };
+}
+
 /**
  * Cotiza el envío de un carrito con Envia (producción) y elige la opción
  * más barata. Devuelve { configurado, paquetes, cotizacion, opciones, aviso }.
@@ -307,7 +319,7 @@ async function cotizarEnvio({ carrito, destino }) {
   const paquetesE = paquetesEnvia(paquetes, destino.valorDeclarado);
   const clave = JSON.stringify([destino.codigoDane, paquetesE]);
   const guardada = _cotizaciones.get(clave);
-  if (guardada && Date.now() - guardada.en < VIGENCIA_COTIZACION_MS) return { ...base, ...guardada.resultado };
+  if (guardada && Date.now() - guardada.en < VIGENCIA_COTIZACION_MS) return aplicarEnvioGratis({ ...base, ...guardada.resultado }, destino.valorDeclarado);
 
   const opciones = await tarifas('produccion', { origen, destino: destinoEnvia, paquetes: paquetesE });
   const masBarata = opciones[0] || null;
@@ -325,7 +337,7 @@ async function cotizarEnvio({ carrito, destino }) {
     aviso: masBarata ? null : 'No hay transportadoras con cobertura para esa ciudad.',
   };
   if (masBarata) _cotizaciones.set(clave, { en: Date.now(), resultado });
-  return { ...base, ...resultado };
+  return aplicarEnvioGratis({ ...base, ...resultado }, destino.valorDeclarado);
 }
 
 // Lista de municipios de Colombia con su código DANE para el checkout.

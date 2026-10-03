@@ -75,7 +75,9 @@ router.post('/preparar', async (req, res) => {
       envio = {
         ...envio,
         modalidad: 'domicilio',
-        costo: costoEnvio,
+        costo: costoEnvio,                          // lo que paga el cliente
+        envioGratis: Boolean(cotizacion.envioGratis),
+        costoReal: Math.round(cotizacion.costoReal ?? cotizacion.costoTotal),   // lo que cuesta la guía
         transportadora: cotizacion.transportadora,
         carrier: cotizacion.carrier,
         servicio: cotizacion.servicio,
@@ -134,6 +136,41 @@ router.post('/preparar', async (req, res) => {
 
 
 // ------------------------------------------------------------
+// Lo que ve la página de confirmación. A propósito NO lleva datos de
+// contacto ni la dirección: estas rutas se consultan solo con la
+// referencia o el id de la transacción. Esos datos los guarda el propio
+// navegador al pagar (sessionStorage en CheckoutPage).
+// ------------------------------------------------------------
+function resumenPublico(pedido, { estado, metodoPago } = {}) {
+  const envio = pedido.envio || {};
+  return {
+    referencia: pedido.referencia,
+    estado:     estado || pedido.estado,   // PENDIENTE | APROBADO | RECHAZADO | ANULADO | ERROR
+    total:      pedido.totalPesos,
+    cliente:    pedido.cliente?.nombre,
+    modalidad:  envio.modalidad || null,   // domicilio | tienda
+    creadoEn:   pedido.creadoEn,
+    metodoPago: pedido.metodoPago || metodoPago || null,   // CARD | PSE | NEQUI | ...
+    productos:  (pedido.carrito || []).map((i) => ({
+      productoId: i.productoId, nombre: i.nombre, variante: i.variante || null,
+      cantidad: i.cantidad, precio: i.precio,
+    })),
+    envio: {
+      costo:          Number(envio.costo) || 0,
+      envioGratis:    Boolean(envio.envioGratis),
+      ciudad:         envio.ciudad || null,
+      departamento:   envio.departamento || null,
+      codigoDane:     envio.codigoDane || null,
+      transportadora: envio.transportadora || null,
+    },
+    guia: pedido.guia?.numeroGuia
+      ? { numeroGuia: pedido.guia.numeroGuia, rastreoUrl: pedido.guia.rastreoUrl || null }
+      : null,
+  };
+}
+
+
+// ------------------------------------------------------------
 // GET /api/pagos/estado/:referencia
 //
 // El frontend puede consultar el estado de un pago.
@@ -148,13 +185,7 @@ router.get('/estado/:referencia', async (req, res) => {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
-    res.json({
-      referencia: pedido.referencia,
-      estado:     pedido.estado,        // PENDIENTE | APROBADO | RECHAZADO
-      total:      pedido.totalPesos,
-      cliente:    pedido.cliente.nombre,
-      modalidad:  pedido.envio?.modalidad || null   // domicilio | tienda
-    });
+    res.json(resumenPublico(pedido));
 
   } catch (error) {
     console.error('Error consultando estado:', error);
@@ -203,13 +234,7 @@ router.get('/verificar/:transaccionId', async (req, res) => {
       await pedidos.actualizarEstado(tx.reference, nuevoEstado, datosPago);
     }
 
-    res.json({
-      referencia: tx.reference,
-      estado:     nuevoEstado,
-      total:      pedido.totalPesos,
-      cliente:    pedido.cliente?.nombre,
-      modalidad:  pedido.envio?.modalidad || null,
-    });
+    res.json(resumenPublico(pedido, { estado: nuevoEstado, metodoPago: tx.payment_method_type }));
   } catch (error) {
     console.error('Error verificando transacción:', error.message);
     res.status(500).json({ error: 'No se pudo verificar el pago' });
