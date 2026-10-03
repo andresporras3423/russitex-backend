@@ -169,6 +169,64 @@ async function descontarStock(carrito) {
 
 
 // ------------------------------------------------------------
+// Lo que ve la página de confirmación. A propósito NO lleva datos de
+// contacto ni la dirección: estas rutas se consultan solo con la
+// referencia o el id de la transacción. Esos datos los guarda el propio
+// navegador al pagar (sessionStorage en CheckoutPage).
+// ------------------------------------------------------------
+function resumenPublico(pedido, { estado, metodoPago } = {}) {
+  const envio = pedido.envio || {};
+  return {
+    referencia: pedido.referencia,
+    estado:     estado || pedido.estado,   // PENDIENTE | APROBADO | RECHAZADO | ANULADO | ERROR
+    total:      pedido.totalPesos,
+    cliente:    pedido.cliente?.nombre,
+    modalidad:  envio.modalidad || null,   // domicilio | tienda
+    creadoEn:   pedido.creadoEn,
+    metodoPago: pedido.metodoPago || metodoPago || null,   // CARD | PSE | NEQUI | ...
+    productos:  (pedido.carrito || []).map((i) => ({
+      productoId: i.productoId, nombre: i.nombre, variante: i.variante || null,
+      cantidad: i.cantidad, precio: i.precio,
+    })),
+    envio: {
+      costo:          Number(envio.costo) || 0,
+      envioGratis:    Boolean(envio.envioGratis),
+      ciudad:         envio.ciudad || null,
+      departamento:   envio.departamento || null,
+      codigoDane:     envio.codigoDane || null,
+      transportadora: envio.transportadora || null,
+    },
+    guia: pedido.guia?.numeroGuia
+      ? { numeroGuia: pedido.guia.numeroGuia, rastreoUrl: pedido.guia.rastreoUrl || null }
+      : null,
+  };
+}
+
+
+// ------------------------------------------------------------
+// Pedidos hechos con un correo (para "Mis pedidos"). El correo se compara
+// sin distinguir mayúsculas. Los PENDIENTE de más de 24 h no se devuelven:
+// casi siempre son pagos que el cliente abandonó en Wompi.
+// ------------------------------------------------------------
+async function listarPorEmail(email) {
+  const limpio = String(email || '').trim()
+  if (!limpio) return []
+  const { data, error } = await supabaseAdmin()
+    .from('pedidos')
+    .select('*')
+    // ilike sin comodines: se escapan % y _ para que sea una comparación exacta.
+    .ilike('cliente->>email', limpio.replace(/[%_\\]/g, (c) => `\\${c}`))
+    .order('creado_en', { ascending: false })
+    .limit(100)
+
+  if (error) throw new Error(`No se pudieron listar los pedidos de ${limpio}: ${error.message}`)
+  const hace24h = Date.now() - 24 * 3600 * 1000
+  return (data || []).map(aPedido)
+    .filter((p) => p.estado !== 'PENDIENTE' || new Date(p.creadoEn).getTime() > hace24h)
+}
+
+
+// ------------------------------------------------------------
 // Listar todos los pedidos (para un panel de admin más adelante).
 // ------------------------------------------------------------
 async function listarTodos() {
@@ -192,4 +250,6 @@ module.exports = {
   guardarGuia,
   descontarStock,
   listarTodos,
+  listarPorEmail,
+  resumenPublico,
 }

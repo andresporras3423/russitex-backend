@@ -40,7 +40,10 @@ async function verificarAuth(req, res, next) {
     email:  user.email,
     nombre: user.user_metadata?.full_name || user.user_metadata?.name || null,
     avatar: user.user_metadata?.avatar_url || null,
-    proveedor: user.app_metadata?.provider  // 'google', 'facebook', 'email'
+    proveedor: user.app_metadata?.provider,  // 'google', 'facebook', 'email'
+    // Solo con el correo verificado se le puede creer que es suyo (p. ej.
+    // para mostrarle los pedidos hechos con ese correo).
+    emailConfirmado: Boolean(user.email_confirmed_at || user.confirmed_at),
   }
 
   next()
