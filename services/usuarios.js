@@ -81,4 +81,4 @@ function nombreProveedor(p) {
   return NOMBRES[p] || p
 }
 
-module.exports = { comoEntra, nombreProveedor }
+module.exports = { comoEntra, nombreProveedor, proveedoresDe }

@@ -27,6 +27,7 @@ app.use('/api/tienda',  require('./routes/tienda'));   // 🏪 Info del local (h
 app.use('/api/avisos',  require('./routes/avisos'));   // 🔔 "Avísame cuando esté disponible"
 app.use('/api/pagos',   require('./routes/pagos'));    // 💳 Wompi
 app.use('/api/pedidos', require('./routes/pedidos'));  // 🧾 Mis pedidos (Mi cuenta)
+app.use('/api/cuenta',  require('./routes/cuenta'));   // 👤 Datos, contraseña y direcciones (Mi cuenta)
 app.use('/api/webhook', require('./routes/webhook')); // 🔔 Wompi webhooks
 app.use('/api/envios',  require('./routes/envios'));   // 🚚 Cotización de envío (MiPaquete)
 app.use("/api/mercadolibre", require('./routes/publicacion'));
