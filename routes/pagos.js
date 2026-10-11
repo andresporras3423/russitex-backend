@@ -6,6 +6,46 @@ const router   = express.Router();
 const wompi    = require('../services/wompi');
 const pedidos  = require('../services/pedidos');   // tu lógica de BD
 const envios   = require('../services/envios');
+const { obtenerCatalogo } = require('../services/catalogo');
+
+const MAX_CANTIDAD = 9999;
+
+// ------------------------------------------------------------
+// El carrito que se cobra lo arma el SERVIDOR: del navegador solo se toma
+// qué producto, qué color y cuántos. Nombre y precio salen del catálogo
+// (Alegra), así que cambiarlos con "Inspeccionar" no sirve de nada.
+// Devuelve { carrito } o { error }.
+// ------------------------------------------------------------
+async function armarCarrito(carritoCliente) {
+  const { productos } = await obtenerCatalogo();
+  const porId = new Map(productos.map((p) => [String(p.id), p]));
+  const carrito = [];
+
+  for (const linea of carritoCliente) {
+    const p = porId.get(String(linea?.productoId));
+    if (!p) return { error: 'Un producto de tu carrito ya no está en el catálogo. Revisa tu carrito.' };
+
+    const cantidad = Number(linea.cantidad);
+    if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > MAX_CANTIDAD) {
+      return { error: `La cantidad de "${p.nombre}" no es válida.` };
+    }
+
+    // El color tiene que ser uno de los del producto (o ninguno si no tiene).
+    let variante = null;
+    if (p.variantes?.length) {
+      const v = p.variantes.find((x) => x.nombre === linea.variante);
+      if (!v) return { error: `Elige el color de "${p.nombre}" en tu carrito.` };
+      if (!v.disponible) return { error: `"${p.nombre}" en ${v.nombre} está agotado. Revisa tu carrito.` };
+      variante = v.nombre;
+    } else if (!p.disponible) {
+      return { error: `"${p.nombre}" está agotado. Revisa tu carrito.` };
+    }
+
+    if (!(p.precio > 0)) return { error: `"${p.nombre}" no tiene precio. Escríbenos por WhatsApp.` };
+    carrito.push({ productoId: String(p.id), nombre: p.nombre, precio: p.precio, cantidad, variante });
+  }
+  return { carrito };
+}
 
 
 // ------------------------------------------------------------
@@ -19,8 +59,8 @@ const envios   = require('../services/envios');
 // Body esperado:
 // {
 //   carrito: [
-//     { productoId: "abc", nombre: "Camiseta M", cantidad: 2, precio: 45000 },
-//     { productoId: "xyz", nombre: "Pantalón L", cantidad: 1, precio: 80000 }
+//     { productoId: "4", cantidad: 2, variante: "Negro" },   // variante: solo si tiene colores
+//     { productoId: "18", cantidad: 1 }                         // nombre y precio los pone el servidor
 //   ],
 //   cliente: {
 //     nombre: "Juan Pérez",
@@ -38,8 +78,14 @@ const envios   = require('../services/envios');
 // ------------------------------------------------------------
 router.post('/preparar', async (req, res) => {
   try {
-    const { carrito, cliente } = req.body;
+    const { cliente } = req.body;
     let envio = req.body.envio || {};
+
+    if (!Array.isArray(req.body.carrito) || !req.body.carrito.length || req.body.carrito.length > 100) {
+      return res.status(400).json({ error: 'Tu carrito está vacío.' });
+    }
+    const { carrito, error: errorCarrito } = await armarCarrito(req.body.carrito);
+    if (errorCarrito) return res.status(409).json({ error: errorCarrito });
 
     // Sin "modalidad" (checkout viejo en caché) se deduce del costo enviado.
     const domicilio = envio.modalidad
@@ -208,3 +254,4 @@ router.get('/verificar/:transaccionId', async (req, res) => {
 
 
 module.exports = router;
+module.exports.armarCarrito = armarCarrito;   // para probarlo sin pasar por Wompi
