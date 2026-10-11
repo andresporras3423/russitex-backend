@@ -383,7 +383,7 @@ async function crearEnvio({ referencia, cliente, envio, carrito }) {
     origin: direccionEnvia(ORIGEN_DANE, { ...REMITENTE, empresa: 'Russitex', documento: REMITENTE.nit }),
     destination: direccionEnvia(envio.codigoDane, {
       nombre: cliente?.nombre, email: cliente?.email, telefono: cliente?.telefono,
-      direccion: envio.direccion, documento: cliente?.documento,
+      direccion: envio.direccion, documento: cliente?.documento || cliente?.empresa?.nit,
     }),
     packages: paquetesEnvia(paquetes, valorDeclarado),
     settings: { currency: 'COP', printFormat: 'PDF', printSize: 'STOCK_4X6' },

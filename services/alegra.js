@@ -264,9 +264,25 @@ function contactoDesdeCliente(cliente, envio) {
   return contacto
 }
 
+// Con "Datos de empresa" en el checkout, la factura va a nombre de la
+// empresa (NIT); el nombre, correo y teléfono siguen siendo de quien compra.
+function clienteFiscal(cliente) {
+  const e = cliente?.empresa
+  if (!e?.nit) return cliente
+  return {
+    ...cliente,
+    tipoDocumento: 'NIT',
+    documento: e.nit,
+    dv: digitoVerificacion(e.nit),   // el DV no se le cree al navegador: es un cálculo
+    razonSocial: e.razonSocial,
+    regimen: e.regimen === 'SIMPLIFIED_REGIME' ? 'SIMPLIFIED_REGIME' : 'COMMON_REGIME',
+  }
+}
+
 // Busca el cliente por documento; si no existe lo crea. A los que ya existen
 // no se les cambia nada: la tienda puede haberlos corregido a mano.
-async function obtenerCliente(cliente, envio) {
+async function obtenerCliente(clienteCheckout, envio) {
+  const cliente = clienteFiscal(clienteCheckout)
   const numero = numeroDocumento(cliente)
   if (!numero) throw new Error('El pedido no tiene documento del cliente')
 
