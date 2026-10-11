@@ -164,6 +164,8 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
   //    No se espera: Wompi necesita su 200 rápido y un correo lento haría
   //    que reintente el aviso. (avisarPedidoAprobado nunca lanza error.)
   notificaciones.avisarPedidoAprobado(pedido);
+  // 7. Aviso a la tienda para que lo empaquen (tampoco se espera ni lanza).
+  notificaciones.avisarPedidoTienda(pedido);
 }
 
 

@@ -5,6 +5,9 @@
 //      resumen de la compra y, si ya hay guía, el número y el rastreo.
 //    - avisarNovedadAlmacen(pedido, estado): a la tienda (no al cliente)
 //      cuando el envío tiene un problema, para que lo llamen.
+//    - avisarPedidoTienda(pedido): a la tienda por cada pedido pagado, con
+//      la lista para empacar y la etiqueta de la guía.
+//    - avisarFacturaFallida(pedido, error): a la tienda si Alegra falla.
 //
 //  Los avisos de avance del envío (en camino, entregado...) al cliente los
 //  manda Envia por su cuenta, con la marca de la tienda; aquí no se repiten.
@@ -188,7 +191,84 @@ async function avisarNovedadAlmacen(pedido, estado) {
 }
 
 // ------------------------------------------------------------
-// 3. No se pudo crear la factura en Alegra (a la tienda)
+// 3. Pedido nuevo (a la tienda): qué empacar, para quién y la guía.
+// ------------------------------------------------------------
+// "Por metro" + 20 -> "20 metros"; sin unidad -> "20 ×".
+function cantidadConUnidad(cantidad, unidad) {
+  const base = String(unidad || '').replace(/^(venta\s+por|por)\s+/i, '').trim().toLowerCase()
+  if (!base) return `${cantidad} ×`
+  if (Number(cantidad) === 1) return `1 ${base}`
+  return `${cantidad} ${/[aeiou]$/.test(base) ? base + 's' : base + 'es'}`
+}
+
+const MEDIOS_WOMPI = { CARD: 'tarjeta', PSE: 'PSE', NEQUI: 'Nequi', BANCOLOMBIA_TRANSFER: 'Bancolombia', BANCOLOMBIA_QR: 'QR Bancolombia', DAVIPLATA: 'Daviplata' }
+
+function armarCorreoPedidoTienda(pedido) {
+  const c = pedido.cliente || {}
+  const e = c.empresa
+  const envio = pedido.envio || {}
+  const guia = pedido.guia || {}
+  const tienda = envio.modalidad === 'tienda'
+  const lugar = [envio.ciudad, envio.departamento].filter(Boolean).join(', ')
+
+  const empacar = (pedido.carrito || []).map((i) => {
+    const cant = cantidadConUnidad(i.cantidad, i.unidad)
+    return `☐ ${cant}${cant.endsWith("×") ? "" : " de"} ${nombreItem(i)}`
+  })
+  const entrega = tienda
+    ? ['RECOGE EN LA TIENDA', 'Tener el pedido listo y avisarle al cliente.']
+    : [
+        `ENVÍO a ${lugar}`,
+        `Dirección: ${envio.direccion || '(sin dirección)'}`,
+        `Transportadora: ${envio.transportadora || guia.carrier || '-'}${envio.envioGratis ? ' (envío gratis: lo paga la tienda)' : ''}`,
+        guia.numeroGuia
+          ? `Guía: ${guia.numeroGuia}${guia.ambiente === 'pruebas' ? ' (PRUEBA, no es real)' : ''}`
+          : 'Guía: NO se creó. Hay que generarla en Envia.',
+      ]
+  const cliente = [
+    `Nombre: ${c.nombre || '-'}`,
+    `Celular: ${c.telefono || '-'}`,
+    `Correo: ${c.email || '-'}`,
+    e ? `Factura a: ${e.razonSocial} · NIT ${e.nit}` : `Documento: ${c.tipoDocumento || ''} ${c.documento || '-'}`,
+  ]
+
+  const asunto = `Nuevo pedido ${pesos(pedido.totalPesos)} · ${tienda ? 'recoge en tienda' : lugar} · ${pedido.referencia}`
+  const texto = [
+    `Llegó un pedido pagado por la web (${MEDIOS_WOMPI[pedido.metodoPago] || pedido.metodoPago || 'Wompi'}).`, '',
+    'PARA EMPACAR', ...empacar, '',
+    ...entrega, guia.etiquetaUrl ? `Etiqueta para imprimir: ${guia.etiquetaUrl}` : '', '',
+    'CLIENTE', ...cliente, '',
+    textoProductos(pedido),
+  ].join('\n')
+
+  const lista = (lineas) => lineas.filter(Boolean).map((l) => `${escaparHtml(l)}<br>`).join('')
+  const html = `
+    <div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color:${COLOR.texto};max-width:600px">
+      <h1 style="font-size:19px;margin:0 0 6px">Nuevo pedido · ${pesos(pedido.totalPesos)}</h1>
+      <p style="margin:0 0 16px;color:${COLOR.suave};font-size:13px">${escaparHtml(pedido.referencia)} · pagado por la web</p>
+      <h2 style="font-size:15px;margin:0 0 6px">Para empacar</h2>
+      <p style="font-size:16px;line-height:1.7;margin:0 0 16px;background:${COLOR.fondo};padding:10px 14px;border-radius:6px">${lista(empacar)}</p>
+      <h2 style="font-size:15px;margin:0 0 6px">${escaparHtml(entrega[0])}</h2>
+      <p style="font-size:14px;line-height:1.6;margin:0">${lista(entrega.slice(1))}</p>
+      ${guia.etiquetaUrl ? boton(guia.etiquetaUrl, 'Imprimir etiqueta') : ''}
+      <h2 style="font-size:15px;margin:16px 0 6px">Cliente</h2>
+      <p style="font-size:14px;line-height:1.6;margin:0 0 12px">${lista(cliente)}</p>
+      ${tablaProductos(pedido)}
+    </div>`
+  return { asunto, texto, html }
+}
+
+async function avisarPedidoTienda(pedido) {
+  const { asunto, texto, html } = armarCorreoPedidoTienda(pedido)
+  return enviarSeguro(`pedido nuevo a la tienda ${pedido.referencia}`, {
+    destino: process.env.CORREO_DESTINO || process.env.SMTP_USER,
+    asunto, texto, html,
+    responderA: pedido.cliente?.email || undefined,
+  })
+}
+
+// ------------------------------------------------------------
+// 4. No se pudo crear la factura en Alegra (a la tienda)
 // ------------------------------------------------------------
 async function avisarFacturaFallida(pedido, error) {
   const c = pedido.cliente || {}
@@ -214,6 +294,8 @@ module.exports = {
   avisarPedidoAprobado,
   avisarNovedadAlmacen,
   avisarFacturaFallida,
+  avisarPedidoTienda,
+  armarCorreoPedidoTienda,
   // Para revisar cómo quedan los correos sin enviarlos.
   armarCorreoPedidoAprobado,
 }

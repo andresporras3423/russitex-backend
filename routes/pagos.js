@@ -42,7 +42,7 @@ async function armarCarrito(carritoCliente) {
     }
 
     if (!(p.precio > 0)) return { error: `"${p.nombre}" no tiene precio. Escríbenos por WhatsApp.` };
-    carrito.push({ productoId: String(p.id), nombre: p.nombre, precio: p.precio, cantidad, variante });
+    carrito.push({ productoId: String(p.id), nombre: p.nombre, precio: p.precio, cantidad, variante, unidad: p.unidad || null });
   }
   return { carrito };
 }
