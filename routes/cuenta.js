@@ -6,7 +6,8 @@
 //  que la inició.
 //
 //    GET    /api/cuenta/perfil
-//    PUT    /api/cuenta/perfil                  { nombre, telefono, tipoDocumento, documento }
+//    PUT    /api/cuenta/perfil                  { nombre, telefono, tipoDocumento, documento, empresa? }
+//    POST   /api/cuenta/desde-checkout          (lo último escrito en el checkout)
 //    POST   /api/cuenta/contrasena              { actual, nueva }
 //    GET    /api/cuenta/direcciones
 //    POST   /api/cuenta/direcciones             { destinatario, direccion, indicaciones?, codigoDane }
@@ -53,7 +54,25 @@ function perfilDe(user) {
     documento:       m.documento || '',
     proveedores:     proveedoresDe(user),           // ['email'], ['google'], ...
     tieneContrasena: proveedoresDe(user).includes('email'),
+    // Datos de facturación de empresa y si la última compra fue como empresa
+    // (así el checkout marca o no "Datos de empresa").
+    empresa:             m.empresa || null,         // { razonSocial, nit, regimen }
+    facturarComoEmpresa: Boolean(m.facturar_como_empresa && m.empresa),
   }
+}
+
+const REGIMENES = ['COMMON_REGIME', 'SIMPLIFIED_REGIME']
+
+// Valida los datos de empresa. Devuelve { empresa } (null = sin empresa) o { error }.
+function datosEmpresa(e) {
+  if (e == null) return { empresa: null }
+  const razonSocial = texto(e.razonSocial, 150)
+  const nit = String(e.nit ?? '').replace(/\D/g, '').slice(0, 15)
+  const regimen = REGIMENES.includes(e.regimen) ? e.regimen : ''
+  if (razonSocial.length < 2) return { error: 'Escribe la razón social.' }
+  if (nit.length < 5) return { error: 'El NIT no es válido.' }
+  if (!regimen) return { error: 'Elige la responsabilidad de IVA.' }
+  return { empresa: { razonSocial, nit, regimen } }
 }
 
 router.get('/perfil', async (req, res) => {
@@ -75,6 +94,10 @@ router.put('/perfil', async (req, res) => {
   if (telefono && !/^\+?[\d\s()-]{7,20}$/.test(telefono)) return res.status(400).json({ error: 'El teléfono no es válido.' })
   if (!TIPOS_DOCUMENTO.includes(tipoDocumento)) return res.status(400).json({ error: 'Tipo de documento no válido.' })
   if (documento && !/^[\w.-]{4,20}$/.test(documento)) return res.status(400).json({ error: 'El documento no es válido.' })
+  // La empresa solo cambia si viene la clave (null = borrarla).
+  const conEmpresa = req.body && 'empresa' in req.body
+  const { empresa, error: errEmpresa } = conEmpresa ? datosEmpresa(req.body.empresa) : {}
+  if (errEmpresa) return res.status(400).json({ error: errEmpresa })
 
   try {
     const user = await leerUsuario(req.usuario.id)
@@ -86,6 +109,7 @@ router.put('/perfil', async (req, res) => {
         telefono,
         tipo_documento: tipoDocumento,
         documento,
+        ...(conEmpresa ? { empresa, ...(empresa ? {} : { facturar_como_empresa: false }) } : {}),
       },
     })
     if (error) throw error
@@ -229,6 +253,70 @@ router.post('/direcciones/:id/principal', async (req, res) => {
   } catch (e) {
     console.error('[cuenta] dirección principal:', e.message)
     res.status(500).json({ error: 'No se pudo cambiar la dirección principal.' })
+  }
+})
+
+// ------------------------------------------------------------
+// POST /api/cuenta/desde-checkout
+//
+// El checkout lo llama al hacer clic en "Pagar" para que la próxima compra
+// salga prellenada. Guarda lo último que escribió el cliente:
+//   - datos personales (los vacíos no borran lo que ya había),
+//   - la empresa y si esta vez compró como empresa,
+//   - la dirección, AGREGÁNDOLA a "Mis direcciones" si no estaba
+//     (la primera queda como principal; nunca reemplaza ni borra otras).
+// Body: { nombre, telefono, tipoDocumento, documento, empresa|null,
+//         direccion?: { destinatario, direccion, codigoDane } }
+// Nunca falla hacia el cliente por un dato raro: lo inválido se ignora.
+// ------------------------------------------------------------
+const normalizar = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '')
+
+router.post('/desde-checkout', async (req, res) => {
+  const b = req.body || {}
+  try {
+    const user = await leerUsuario(req.usuario.id)
+    const m = { ...(user.user_metadata || {}) }
+
+    const nombre = texto(b.nombre, 120)
+    const telefono = texto(b.telefono, 20)
+    const tipoDocumento = texto(b.tipoDocumento, 5).toUpperCase()
+    const documento = texto(b.documento, 20)
+    if (nombre.length >= 2) { m.full_name = nombre; m.name = nombre }
+    if (/^\+?[\d\s()-]{7,20}$/.test(telefono)) m.telefono = telefono
+    if (/^[\w.-]{4,20}$/.test(documento) && TIPOS_DOCUMENTO.includes(tipoDocumento)) {
+      m.tipo_documento = tipoDocumento
+      m.documento = documento
+    }
+    // Sin empresa esta vez: se conserva la guardada, solo se desmarca.
+    const { empresa } = datosEmpresa(b.empresa)
+    if (empresa) m.empresa = empresa
+    m.facturar_como_empresa = Boolean(empresa)
+
+    const { error } = await supabaseAdmin().auth.admin.updateUserById(req.usuario.id, { user_metadata: m })
+    if (error) throw error
+
+    let direccionGuardada = false
+    if (b.direccion) {
+      const datos = datosDireccion(b.direccion)
+      if (!datos.error) {
+        const actuales = await listarDirecciones(req.usuario.id)
+        // Misma dirección = mismo municipio y mismo texto (con o sin indicaciones).
+        const clave = normalizar(datos.direccion)
+        const yaEsta = actuales.some((d) => d.codigoDane === datos.codigo_dane &&
+          [d.direccion, `${d.direccion} (${d.indicaciones})`, `${d.direccion} ${d.indicaciones}`].some((t) => normalizar(t) === clave))
+        if (!yaEsta && actuales.length < MAX_DIRECCIONES) {
+          const { data, error: errDir } = await supabaseAdmin().from('direcciones')
+            .insert({ ...datos, usuario_id: req.usuario.id, principal: false }).select('id').single()
+          if (errDir) throw new Error(errDir.message)
+          if (actuales.length === 0) await hacerPrincipal(req.usuario.id, data.id)
+          direccionGuardada = true
+        }
+      }
+    }
+    res.json({ ok: true, direccionGuardada })
+  } catch (e) {
+    console.error('[cuenta] guardar desde checkout:', e.message)
+    res.status(500).json({ error: 'No se pudieron guardar tus datos.' })
   }
 })
 
