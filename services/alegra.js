@@ -162,6 +162,8 @@ async function obtenerProductos({ limit = 30 } = {}) {
 //    ALEGRA_EMITIR       "true" para emitir de verdad (por defecto borrador)
 //    ALEGRA_NUMERACION   id de la numeración electrónica (PL2 = 17). Si no
 //                        está, Alegra usa la preferida de la cuenta.
+//    ALEGRA_NUMERACION_BORRADOR  numeración para los borradores ("Principal"
+//                        = 1, no electrónica): ver generarFactura.
 //    ALEGRA_ITEM_ENVIO   id del ítem de servicio "Envío" en Alegra.
 // ============================================================
 
@@ -328,7 +330,13 @@ async function generarFactura(pedido) {
     status: emitir ? 'open' : 'draft',
     anotation: `Pedido tienda en línea ${referencia}`,
   }
-  if (process.env.ALEGRA_NUMERACION) factura.numberTemplate = { id: process.env.ALEGRA_NUMERACION }
+  // Un borrador en Alegra SÍ gasta el consecutivo de su numeración (probado
+  // el 2026-10-10: PL418 quedó en un borrador). Por eso los borradores van a
+  // la numeración "Principal" (no electrónica) y no dejan huecos en la PL.
+  const numeracion = emitir
+    ? process.env.ALEGRA_NUMERACION
+    : (process.env.ALEGRA_NUMERACION_BORRADOR || '1')
+  if (numeracion) factura.numberTemplate = { id: numeracion }
   if (emitir) factura.stamp = { generateStamp: true }
 
   let creada
