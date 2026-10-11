@@ -145,42 +145,220 @@ async function obtenerProductos({ limit = 30 } = {}) {
   return todos.map(normalizarItem)
 }
 
-async function generarFactura({ referencia, cliente, carrito, totalPesos, metodoPago }) {
-  const items = carrito.map(item => ({
-    id:       item.productoId,
-    name:     item.nombre,
-    price:    item.precio,
-    quantity: item.cantidad
-  }));
+// ============================================================
+//  FACTURACIÓN de los pedidos de la tienda en línea
+//
+//  Alegra no tiene ambiente de pruebas: todo pega en la cuenta real.
+//  Por eso, mientras ALEGRA_EMITIR no sea "true", la factura se crea en
+//  BORRADOR: queda en Alegra para revisarla, pero no consume numeración
+//  ni se envía a la DIAN (se puede borrar desde Alegra).
+//  Con ALEGRA_EMITIR=true se crea abierta y Alegra la emite a la DIAN.
+//
+//  Como las facturas que hace la tienda a mano, quedan "de contado" con
+//  saldo pendiente: el plan actual de Alegra no deja registrar pagos por
+//  API (las cuentas de banco responden "no se puede en tu plan actual").
+//
+//  Variables:
+//    ALEGRA_EMITIR       "true" para emitir de verdad (por defecto borrador)
+//    ALEGRA_NUMERACION   id de la numeración electrónica (PL2 = 17). Si no
+//                        está, Alegra usa la preferida de la cuenta.
+//    ALEGRA_ITEM_ENVIO   id del ítem de servicio "Envío" en Alegra.
+// ============================================================
 
-  // TODO: implementar llamada real a Alegra cuando tengas el token
-  // const response = await fetch(`${ALEGRA_API_URL}/invoices`, {
-  //   method: 'POST',
-  //   headers: {
-  //     'Authorization': `Basic ${ALEGRA_TOKEN_BASE64}`,
-  //     'Content-Type': 'application/json'
-  //   },
-  //   body: JSON.stringify({
-  //     date: new Date().toISOString().split('T')[0],
-  //     dueDate: new Date().toISOString().split('T')[0],
-  //     client: {
-  //       name:  cliente.nombre,
-  //       email: cliente.email
-  //     },
-  //     items,
-  //     notes: `Pedido ${referencia} — Pago via ${metodoPago}`,
-  //     send: true  // Alegra envía la factura al correo del cliente automáticamente
-  //   })
-  // });
+const emitirFacturas = () => process.env.ALEGRA_EMITIR === 'true'
 
-  console.log(`🧾 [Alegra] Factura generada para pedido ${referencia}`);
-  console.log(`   Cliente: ${cliente.nombre} (${cliente.email})`);
-  console.log(`   Total: $${totalPesos.toLocaleString('es-CO')} COP | Método: ${metodoPago}`);
+async function llamarAlegra(ruta, { method = 'GET', body } = {}) {
+  const res = await fetch(`${ALEGRA_API_URL}/${ruta}`, {
+    method,
+    headers: { Authorization: authHeader(), Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const datos = await res.json().catch(() => null)
+  if (!res.ok) {
+    const detalle = datos?.message || JSON.stringify(datos)?.slice(0, 300)
+    const err = new Error(`Alegra ${method} /${ruta} respondió ${res.status}: ${detalle}`)
+    err.status = res.status
+    err.datos = datos
+    throw err
+  }
+  return datos
+}
+
+// Fecha de hoy en Colombia (yyyy-mm-dd), no en UTC: después de las 7 p. m.
+// el servidor ya estaría en el día siguiente.
+function hoyColombia() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())
+}
+
+// Dígito de verificación del NIT (algoritmo de la DIAN).
+function digitoVerificacion(nit) {
+  const pesos = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71]
+  const digitos = String(nit).replace(/\D/g, '').split('').reverse()
+  const suma = digitos.reduce((s, d, i) => s + Number(d) * pesos[i], 0)
+  const r = suma % 11
+  return String(r > 1 ? 11 - r : r)
+}
+
+// "SAN ANDRÉS DE TUMACO" -> "San Andrés De Tumaco"
+function tituloCase(texto) {
+  return String(texto || '').toLowerCase()
+    .replace(/(^|[\s,(-])(\p{L})/gu, (m, sep, letra) => sep + letra.toUpperCase())
+}
+
+// Dirección como la tienen los clientes que ya están en Alegra.
+function direccionAlegra(envio) {
+  const direccion = { country: 'Colombia' }
+  if (envio?.direccion) direccion.address = envio.direccion
+  if (String(envio?.codigoDane || '').startsWith('11001')) {
+    direccion.city = 'Bogotá, D.C.'
+    direccion.department = 'Bogotá D.C.'
+  } else if (envio?.codigoDane && envio?.ciudad && envio?.departamento) {
+    direccion.city = tituloCase(envio.ciudad)
+    direccion.department = tituloCase(envio.departamento)
+  }
+  return direccion
+}
+
+const TIPOS_DOCUMENTO = new Set(['CC', 'CE', 'NIT', 'PP', 'TI', 'PEP', 'DIE', 'NUIP'])
+
+function numeroDocumento(cliente) {
+  return String(cliente?.documento || '').replace(/[^\dA-Za-z]/g, '')
+}
+
+// Arma el contacto de Alegra con los datos del checkout. Con NIT se trata
+// como empresa (razón social); si no, como persona (nombres y apellidos).
+function contactoDesdeCliente(cliente, envio) {
+  const tipo = TIPOS_DOCUMENTO.has(cliente.tipoDocumento) ? cliente.tipoDocumento : 'CC'
+  const numero = numeroDocumento(cliente)
+  const empresa = tipo === 'NIT'
+  const identificationObject = { type: tipo, number: numero }
+  if (empresa) identificationObject.dv = String(cliente.dv ?? digitoVerificacion(numero))
+
+  const contacto = {
+    identificationObject,
+    kindOfPerson: empresa ? 'LEGAL_ENTITY' : 'PERSON_ENTITY',
+    regime: cliente.regimen || (empresa ? 'COMMON_REGIME' : 'SIMPLIFIED_REGIME'),
+    email: cliente.emailFactura || cliente.email,
+    address: direccionAlegra(envio),
+    type: ['client'],
+  }
+  if (cliente.telefono) contacto.phonePrimary = cliente.telefono
+  if (Array.isArray(cliente.responsabilidades) && cliente.responsabilidades.length) {
+    contacto.fiscalResponsabilities = cliente.responsabilidades
+  }
+
+  if (empresa) {
+    contacto.name = cliente.razonSocial || cliente.nombre
+  } else {
+    let nombres = cliente.nombres
+    let apellidos = cliente.apellidos
+    if (!nombres) {
+      const partes = String(cliente.nombre || '').trim().split(/\s+/)
+      nombres = partes.shift() || 'Cliente'
+      apellidos = partes.join(' ')
+    }
+    contacto.nameObject = { firstName: nombres, lastName: apellidos || nombres }
+  }
+  return contacto
+}
+
+// Busca el cliente por documento; si no existe lo crea. A los que ya existen
+// no se les cambia nada: la tienda puede haberlos corregido a mano.
+async function obtenerCliente(cliente, envio) {
+  const numero = numeroDocumento(cliente)
+  if (!numero) throw new Error('El pedido no tiene documento del cliente')
+
+  const encontrados = await llamarAlegra(`contacts?identification=${encodeURIComponent(numero)}`)
+  if (Array.isArray(encontrados) && encontrados.length) return encontrados[0].id
+
+  const contacto = contactoDesdeCliente(cliente, envio)
+  try {
+    return (await llamarAlegra('contacts', { method: 'POST', body: contacto })).id
+  } catch (e) {
+    // Lo más probable es que el municipio no tenga el nombre exacto que
+    // espera Alegra. Se crea sin ciudad: la tienda la completa si hace falta.
+    if (e.status !== 400 || !contacto.address.city) throw e
+    console.warn(`[Alegra] Contacto rechazado con ciudad "${contacto.address.city}", reintento sin ciudad:`, e.message)
+    const { city, department, ...sinCiudad } = contacto.address
+    return (await llamarAlegra('contacts', { method: 'POST', body: { ...contacto, address: sinCiudad } })).id
+  }
+}
+
+// Medio de pago para la DIAN según lo que reporta Wompi (CARD, PSE, NEQUI...).
+function medioDePago(metodoWompi) {
+  return metodoWompi === 'CARD' ? 'CREDIT_CARD' : 'DEBIT_TRANSFER'
+}
+
+// ------------------------------------------------------------
+// Crea la factura del pedido y devuelve lo que se guarda en pedidos.factura:
+// { id, numero, estado ('borrador' | 'emitida'), estadoDian, creadaEn }
+// ------------------------------------------------------------
+async function generarFactura(pedido) {
+  const { referencia, cliente, envio, carrito, metodoPago } = pedido
+  const emitir = emitirFacturas()
+
+  const items = (carrito || []).map((item) => ({
+    id: String(item.productoId),
+    price: Number(item.precio),
+    quantity: Number(item.cantidad),
+    ...(item.variante ? { description: item.variante } : {}),
+  }))
+
+  const costoEnvio = Number(envio?.costo) || 0
+  if (costoEnvio > 0) {
+    const itemEnvio = process.env.ALEGRA_ITEM_ENVIO
+    if (!itemEnvio) throw new Error('Falta ALEGRA_ITEM_ENVIO para facturar el envío')
+    const detalle = [envio.transportadora, envio.ciudad].filter(Boolean).join(' · ')
+    items.push({
+      id: String(itemEnvio),
+      price: costoEnvio,
+      quantity: 1,
+      ...(detalle ? { description: detalle } : {}),
+    })
+  }
+
+  const fecha = hoyColombia()
+  const factura = {
+    date: fecha,
+    dueDate: fecha,
+    client: { id: await obtenerCliente(cliente, envio) },
+    items,
+    paymentForm: 'CASH',
+    paymentMethod: medioDePago(metodoPago),
+    status: emitir ? 'open' : 'draft',
+    anotation: `Pedido tienda en línea ${referencia}`,
+  }
+  if (process.env.ALEGRA_NUMERACION) factura.numberTemplate = { id: process.env.ALEGRA_NUMERACION }
+  if (emitir) factura.stamp = { generateStamp: true }
+
+  let creada
+  try {
+    creada = await llamarAlegra('invoices', { method: 'POST', body: factura })
+  } catch (e) {
+    // Si falla la emisión, Alegra igual deja la factura creada (en borrador)
+    // y la devuelve junto al error. Se guarda para no duplicarla al reintentar.
+    const enError = e.datos?.invoice || e.datos?.data
+    if (!enError?.id) throw e
+    console.error(`[Alegra] Factura ${enError.id} de ${referencia} creada pero no emitida:`, e.message)
+    creada = enError
+  }
+
+  const resultado = {
+    id: String(creada.id),
+    numero: creada.numberTemplate?.fullNumber || null,
+    estado: creada.status === 'draft' ? 'borrador' : 'emitida',
+    estadoDian: creada.stamp?.legalStatus || null,
+    creadaEn: new Date().toISOString(),
+  }
+  console.log(`🧾 [Alegra] Factura ${resultado.numero || resultado.id} (${resultado.estado}) para ${referencia}`)
+  return resultado
 }
 
 
 module.exports = {
   ...module.exports,
   generarFactura,
-  obtenerProductos
+  obtenerProductos,
+  digitoVerificacion,
+  contactoDesdeCliente,
 };

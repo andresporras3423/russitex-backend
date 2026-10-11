@@ -73,7 +73,8 @@ async function construirCatalogo() {
   const imagenesPorVariante  = agruparPor(imagenes.filter((i) => i.variante_id != null), 'variante_id')
 
   return productos
-    .filter((p) => p.activo)
+    // El ítem "Envío" existe en Alegra solo para facturar el envío.
+    .filter((p) => p.activo && p.alegraId !== process.env.ALEGRA_ITEM_ENVIO)
     .map((p) => {
       const meta = metaPorId.get(p.alegraId) || {}
 

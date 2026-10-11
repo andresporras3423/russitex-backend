@@ -7,7 +7,7 @@ const router  = express.Router();
 const wompi   = require('../services/wompi');
 const pedidos = require('../services/pedidos');
 const envios  = require('../services/envios');
-const alegra  = require('../services/alegra');
+const { facturarPedido } = require('../services/facturacion');
 const notificaciones = require('../services/notificaciones');
 
 
@@ -140,21 +140,23 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
       }
     }
 
-    // 5. Generar factura electrónica en Alegra
-    await alegra.generarFactura({
-      referencia,
-      cliente:    pedido.cliente,
-      carrito:    pedido.carrito,
-      totalPesos: pedido.totalPesos,
-      metodoPago: transaccion.payment_method_type
-    });
   } catch (error) {
     // Soltamos la reserva para que el reintento de Wompi lo vuelva a intentar.
     await pedidos.liberarLogistica(referencia);
     throw error;
   }
 
-  console.log(`🧾 Factura generada y envío solicitado para pedido ${referencia}`);
+  console.log(`🚚 Envío solicitado para pedido ${referencia}`);
+
+  // 5. Factura en Alegra (borrador mientras ALEGRA_EMITIR no sea "true").
+  //    No se espera y su error no hace reintentar a Wompi: un fallo de Alegra
+  //    no debe frenar el despacho ni el correo al cliente. Si falla, se le
+  //    avisa a la tienda para reintentarla con scripts/facturar-pedido.js.
+  pedido.metodoPago = pedido.metodoPago || transaccion.payment_method_type;
+  facturarPedido(pedido).catch((error) => {
+    console.error(`❌ [Alegra] No se pudo facturar ${referencia}:`, error.message);
+    notificaciones.avisarFacturaFallida(pedido, error);
+  });
 
   // 6. Correo de confirmación al cliente (con la guía si ya existe). Va al
   //    final y fuera del try: solo sale cuando todo lo anterior funcionó, una

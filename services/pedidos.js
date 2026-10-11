@@ -28,6 +28,7 @@ function aPedido(fila) {
     metodoPago:    fila.metodo_pago,
     fechaPago:     fila.fecha_pago,
     guia:          fila.guia ?? null,
+    factura:       fila.factura ?? null,
     creadoEn:      fila.creado_en,
     actualizadoEn: fila.actualizado_en,
   }
@@ -158,6 +159,19 @@ async function guardarGuia(referencia, guia) {
 
 
 // ------------------------------------------------------------
+// Guardar la factura de Alegra (id, número, estado) en el pedido.
+// ------------------------------------------------------------
+async function guardarFactura(referencia, factura) {
+  const { error } = await supabaseAdmin()
+    .from('pedidos')
+    .update({ factura, actualizado_en: new Date().toISOString() })
+    .eq('referencia', referencia)
+
+  if (error) throw new Error(`No se pudo guardar la factura de ${referencia}: ${error.message}`)
+}
+
+
+// ------------------------------------------------------------
 // Descontar stock de los productos vendidos.
 // TODO (tarea aparte): conectar con el inventario real. Por ahora loguea.
 // ------------------------------------------------------------
@@ -248,6 +262,7 @@ module.exports = {
   liberarLogistica,
   buscarPorGuia,
   guardarGuia,
+  guardarFactura,
   descontarStock,
   listarTodos,
   listarPorEmail,

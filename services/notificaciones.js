@@ -187,9 +187,33 @@ async function avisarNovedadAlmacen(pedido, estado) {
   })
 }
 
+// ------------------------------------------------------------
+// 3. No se pudo crear la factura en Alegra (a la tienda)
+// ------------------------------------------------------------
+async function avisarFacturaFallida(pedido, error) {
+  const c = pedido.cliente || {}
+  const texto = [
+    `El pago del pedido ${pedido.referencia} se aprobó, pero no se pudo crear su factura en Alegra.`,
+    '',
+    `Error: ${error?.message || error}`,
+    `Cliente: ${c.nombre} · ${c.tipoDocumento || ''} ${c.documento || ''} · ${c.email}`,
+    `Total: $${Number(pedido.totalPesos || 0).toLocaleString('es-CO')}`,
+    '',
+    'Se puede reintentar con: node scripts/facturar-pedido.js ' + pedido.referencia,
+    'o hacer la factura a mano en Alegra.',
+  ].join('\n')
+  const html = `<pre style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;white-space:pre-wrap">${escaparHtml(texto)}</pre>`
+  return enviarSeguro(`factura fallida ${pedido.referencia}`, {
+    destino: process.env.CORREO_DESTINO || process.env.SMTP_USER,
+    asunto: `Falta la factura del pedido ${pedido.referencia}`,
+    texto, html,
+  })
+}
+
 module.exports = {
   avisarPedidoAprobado,
   avisarNovedadAlmacen,
+  avisarFacturaFallida,
   // Para revisar cómo quedan los correos sin enviarlos.
   armarCorreoPedidoAprobado,
 }
