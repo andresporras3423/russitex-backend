@@ -9,6 +9,7 @@ const pedidos = require('../services/pedidos');
 const envios  = require('../services/envios');
 const { facturarPedido } = require('../services/facturacion');
 const notificaciones = require('../services/notificaciones');
+const whatsapp = require('../services/whatsapp');
 
 
 // ------------------------------------------------------------
@@ -166,6 +167,8 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
   notificaciones.avisarPedidoAprobado(pedido);
   // 7. Aviso a la tienda para que lo empaquen (tampoco se espera ni lanza).
   notificaciones.avisarPedidoTienda(pedido);
+  // 8. Los mismos avisos por WhatsApp (apagados mientras WHATSAPP_ACTIVO no sea "true").
+  whatsapp.avisarPedidoTiendaWhatsapp(pedido).then(() => whatsapp.avisarPedidoConfirmadoWhatsapp(pedido));
 }
 
 
@@ -190,6 +193,49 @@ async function manejarPagoAprobado(referencia, transaccionId, transaccion) {
 // "Probar" y la herramienta webhooktest de Envia no firman) se aceptan,
 // porque en producción el estado igual se le pregunta a Envia.
 // ------------------------------------------------------------
+
+// ------------------------------------------------------------
+// /api/webhook/whatsapp  —  Meta (WhatsApp Cloud API)
+//
+// GET: Meta verifica la URL una vez con hub.verify_token = WHATSAPP_VERIFY_TOKEN.
+// POST: estados de entrega de los avisos y mensajes que escriben al número de
+// avisos. Por ahora solo se registran en los logs (los fallos de entrega como
+// error). Rusti respondiendo por aquí es una etapa siguiente.
+// La firma X-Hub-Signature-256 = HMAC-SHA256(cuerpo crudo, WHATSAPP_APP_SECRET).
+// ------------------------------------------------------------
+router.get('/whatsapp', (req, res) => {
+  const ok = req.query['hub.mode'] === 'subscribe' &&
+    process.env.WHATSAPP_VERIFY_TOKEN && req.query['hub.verify_token'] === process.env.WHATSAPP_VERIFY_TOKEN;
+  if (!ok) return res.sendStatus(403);
+  res.status(200).send(String(req.query['hub.challenge'] || ''));
+});
+
+function firmaWhatsappValida(req) {
+  const secreto = process.env.WHATSAPP_APP_SECRET;
+  const firma = String(req.headers['x-hub-signature-256'] || '');
+  if (!secreto || !firma.startsWith('sha256=') || !req.cuerpoCrudo) return false;
+  const esperada = 'sha256=' + crypto.createHmac('sha256', secreto).update(req.cuerpoCrudo).digest('hex');
+  const a = Buffer.from(firma), b = Buffer.from(esperada);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+router.post('/whatsapp', (req, res) => {
+  if (!firmaWhatsappValida(req)) return res.sendStatus(401);
+  res.sendStatus(200);   // Meta reintenta si no recibe 200 rápido
+  for (const entrada of req.body?.entry || []) {
+    for (const cambio of entrada.changes || []) {
+      const v = cambio.value || {};
+      for (const st of v.statuses || []) {
+        if (st.status === 'failed') {
+          console.error(`[whatsapp] Aviso no entregado a ${String(st.recipient_id).slice(0, 5)}…: ${st.errors?.[0]?.title || st.errors?.[0]?.message || 'sin detalle'}`);
+        }
+      }
+      for (const m of v.messages || []) {
+        console.log(`💬 [whatsapp] Mensaje recibido de ${String(m.from).slice(0, 5)}… (${m.type}). El número de avisos no se atiende todavía.`);
+      }
+    }
+  }
+});
 
 // Envia valida la URL con "Probar" sin mandar un aviso: basta un 200.
 router.get('/envia', (req, res) => res.status(200).json({ ok: true }));
@@ -250,12 +296,20 @@ async function procesarAvisoEnvia(aviso) {
   const guiaActual = { ...guia, estado, estadoActualizadoEn: new Date().toISOString() };
   await pedidos.guardarGuia(pedido.referencia, guiaActual);
 
-  // Al cliente le avisa Envia (en camino, entregado...). Aquí solo se avisa
-  // a la tienda cuando hay una novedad, una sola vez por cada estado.
+  // Al cliente le avisa Envia por correo (en camino, entregado...). Aquí se
+  // avisa a la tienda cuando hay una novedad y, si el cliente aceptó avisos
+  // por WhatsApp, se le manda "va en camino". Cada aviso, una sola vez.
   const avisos = new Set(guia.avisos || []);
+  const antes = avisos.size;
   const clave = `novedad:${estado}`;
   if (categoria === 'novedad' && !avisos.has(clave) && await notificaciones.avisarNovedadAlmacen(pedido, estado)) {
     avisos.add(clave);
+  }
+  if (categoria === 'en_camino' && !avisos.has('wa:en_camino') &&
+      await whatsapp.avisarPedidoEnCaminoWhatsapp({ ...pedido, guia: guiaActual })) {
+    avisos.add('wa:en_camino');
+  }
+  if (avisos.size !== antes) {
     await pedidos.guardarGuia(pedido.referencia, { ...guiaActual, avisos: [...avisos] });
   }
 }
