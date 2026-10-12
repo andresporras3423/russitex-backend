@@ -275,7 +275,11 @@ function clienteFiscal(cliente) {
     documento: e.nit,
     dv: digitoVerificacion(e.nit),   // el DV no se le cree al navegador: es un cálculo
     razonSocial: e.razonSocial,
+    // "No estoy seguro" -> responsable, como la mayoría de empresas en Alegra.
     regimen: e.regimen === 'SIMPLIFIED_REGIME' ? 'SIMPLIFIED_REGIME' : 'COMMON_REGIME',
+    // La factura va al correo de la empresa si lo dio (p. ej. contabilidad).
+    emailFactura: e.correo || cliente.emailFactura,
+    telefono: e.celular || cliente.telefono,
   }
 }
 
