@@ -16,7 +16,7 @@
 //    WHATSAPP_APP_SECRET        clave secreta de la app (firma del webhook)
 //    WHATSAPP_VERIFY_TOKEN      clave inventada por nosotros para registrar el webhook
 //    WHATSAPP_AVISO_TIENDA      celular(es) que reciben los pedidos nuevos, separados por coma
-//    WHATSAPP_API_VERSION       versión de la Graph API (por defecto v23.0)
+//    WHATSAPP_API_VERSION       versión de la Graph API (por defecto v26.0, la de la app)
 //
 //  Nunca lanza errores hacia afuera: un WhatsApp que no sale no debe tumbar
 //  el pago, el envío ni los correos.
@@ -50,7 +50,7 @@ const PLANTILLAS = {
 
 const activo = () => process.env.WHATSAPP_ACTIVO === 'true' &&
   Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID)
-const graph = (ruta) => `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION || 'v23.0'}/${ruta}`
+const graph = (ruta) => `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION || 'v26.0'}/${ruta}`
 
 // "300 123 4567", "+57 300…", "57300…" -> "573001234567". null si no sirve.
 function numeroWhatsapp(tel) {
