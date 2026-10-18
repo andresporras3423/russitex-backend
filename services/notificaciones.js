@@ -268,7 +268,40 @@ async function avisarPedidoTienda(pedido) {
 }
 
 // ------------------------------------------------------------
-// 4. No se pudo crear la factura en Alegra (a la tienda)
+// 4. Pedido cancelado por la tienda (al cliente), con el reembolso.
+// ------------------------------------------------------------
+function armarCorreoPedidoCancelado(pedido, contacto) {
+  const c = pedido.cancelacion || {}
+  // Siempre el sitio público: el script se puede correr desde un computador local.
+  const enlace = `https://russitex.com/pedido-cancelado?ref=${encodeURIComponent(pedido.referencia)}`
+  const nombre = primerNombre(pedido.cliente?.nombres || pedido.cliente?.nombre)
+  const asunto = `Cancelamos tu pedido ${pedido.referencia} y te devolvemos el dinero`
+  const cuerpoHtml = `
+    <p style="font-size:15px;line-height:1.6">Hola${nombre ? ' ' + escaparHtml(nombre) : ''}, lamentamos el inconveniente: no pudimos completar tu pedido <strong>${escaparHtml(pedido.referencia)}</strong>.</p>
+    <p style="font-size:15px;line-height:1.6;background:${COLOR.fondo};padding:12px 14px;border-radius:6px"><strong>Motivo:</strong> ${escaparHtml(c.motivo || '')}</p>
+    <p style="font-size:15px;line-height:1.6">Ya iniciamos la devolución de <strong>${pesos(c.monto ?? pedido.totalPesos)}</strong> a tu mismo medio de pago. Según tu banco, llega en <strong>5 a 15 días hábiles</strong>. No tienes que hacer nada.</p>
+    ${boton(enlace, 'Ver el detalle')}`
+  const texto = [
+    `Hola${nombre ? ' ' + nombre : ''}, lamentamos el inconveniente: no pudimos completar tu pedido ${pedido.referencia}.`, '',
+    `Motivo: ${c.motivo || ''}`, '',
+    `Ya iniciamos la devolución de ${pesos(c.monto ?? pedido.totalPesos)} a tu mismo medio de pago. Según tu banco, llega en 5 a 15 días hábiles.`, '',
+    `Detalle: ${enlace}`,
+    contacto.whatsapp ? `\nPreguntas: WhatsApp ${contacto.whatsapp}` : '',
+  ].join('\n')
+  return { asunto, texto, html: plantilla({ titulo: 'Cancelamos tu pedido', cuerpoHtml, contacto }) }
+}
+
+async function avisarPedidoCancelado(pedido) {
+  const contacto = await contactoTienda()
+  const { asunto, html, texto } = armarCorreoPedidoCancelado(pedido, contacto)
+  return enviarSeguro(`pedido cancelado ${pedido.referencia}`, {
+    destino: pedido.cliente?.email, asunto, html, texto,
+    responderA: process.env.CORREO_DESTINO || undefined,
+  })
+}
+
+// ------------------------------------------------------------
+// 5. No se pudo crear la factura en Alegra (a la tienda)
 // ------------------------------------------------------------
 async function avisarFacturaFallida(pedido, error) {
   const c = pedido.cliente || {}
@@ -295,6 +328,8 @@ module.exports = {
   avisarNovedadAlmacen,
   avisarFacturaFallida,
   avisarPedidoTienda,
+  avisarPedidoCancelado,
+  armarCorreoPedidoCancelado,
   armarCorreoPedidoTienda,
   // Para revisar cómo quedan los correos sin enviarlos.
   armarCorreoPedidoAprobado,

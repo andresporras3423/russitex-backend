@@ -468,6 +468,24 @@ const CATEGORIA_ESTADO = {
   partiallydelivered: 'novedad', deliveryattempt: 'novedad',
 };
 
+// Cancela una guía (pedido cancelado por la tienda). Envia devuelve el saldo
+// si la transportadora no ha recogido el paquete; si ya lo recogió, no deja
+// cancelar y hay que gestionarlo a mano. Envia responde los errores con
+// HTTP 200, así que el éxito se mira en el contenido.
+async function cancelarEnvio(guia) {
+  if (!guia?.numeroGuia || !guia?.carrier) return { ok: false, detalle: 'El pedido no tiene guía.' }
+  const ambiente = guia.ambiente === 'produccion' ? 'produccion' : 'pruebas'
+  try {
+    const { ok, datos } = await llamarEnvia(ambiente, '/ship/cancel/', { carrier: guia.carrier, trackingNumber: guia.numeroGuia })
+    const error = datos?.error?.message || datos?.error?.description || (datos?.meta === 'error' ? JSON.stringify(datos).slice(0, 200) : null)
+    if (!ok || error) return { ok: false, detalle: error || `HTTP sin éxito` }
+    const d = Array.isArray(datos?.data) ? datos.data[0] : datos?.data
+    return { ok: true, devuelto: d?.refundedAmount ?? d?.balanceReturned ?? null }
+  } catch (e) {
+    return { ok: false, detalle: e.message }
+  }
+}
+
 // "Out for Delivery", "out_for_delivery" y "outfordelivery" cuentan igual.
 function categoriaDeEstado(estado) {
   const clave = String(estado || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -476,5 +494,5 @@ function categoriaDeEstado(estado) {
 
 module.exports = {
   calcularPaquete, resolverCarrito, cotizarEnvio, obtenerCiudades, crearEnvio,
-  consultarRastreo, categoriaDeEstado,
+  consultarRastreo, categoriaDeEstado, cancelarEnvio,
 };

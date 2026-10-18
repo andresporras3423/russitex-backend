@@ -29,6 +29,7 @@ function aPedido(fila) {
     fechaPago:     fila.fecha_pago,
     guia:          fila.guia ?? null,
     factura:       fila.factura ?? null,
+    cancelacion:   fila.cancelacion ?? null,
     creadoEn:      fila.creado_en,
     actualizadoEn: fila.actualizado_en,
   }
@@ -159,6 +160,22 @@ async function guardarGuia(referencia, guia) {
 
 
 // ------------------------------------------------------------
+// Cancelación de un pedido YA PAGADO por parte de la tienda (p. ej. un
+// producto se agotó): { motivo, agotados[], monto, estadoReembolso
+// ('en_proceso' | 'reembolsado'), canceladoEn, reembolsadoEn }.
+// El estado del pago sigue APROBADO: lo que cambia es el pedido.
+// ------------------------------------------------------------
+async function guardarCancelacion(referencia, cancelacion) {
+  const { error } = await supabaseAdmin()
+    .from('pedidos')
+    .update({ cancelacion, actualizado_en: new Date().toISOString() })
+    .eq('referencia', referencia)
+
+  if (error) throw new Error(`No se pudo guardar la cancelación de ${referencia}: ${error.message}`)
+}
+
+
+// ------------------------------------------------------------
 // Guardar la factura de Alegra (id, número, estado) en el pedido.
 // ------------------------------------------------------------
 async function guardarFactura(referencia, factura) {
@@ -200,7 +217,7 @@ function resumenPublico(pedido, { estado, metodoPago } = {}) {
     metodoPago: pedido.metodoPago || metodoPago || null,   // CARD | PSE | NEQUI | ...
     productos:  (pedido.carrito || []).map((i) => ({
       productoId: i.productoId, nombre: i.nombre, variante: i.variante || null,
-      cantidad: i.cantidad, precio: i.precio,
+      cantidad: i.cantidad, precio: i.precio, unidad: i.unidad || null,
     })),
     envio: {
       costo:          Number(envio.costo) || 0,
@@ -210,8 +227,18 @@ function resumenPublico(pedido, { estado, metodoPago } = {}) {
       codigoDane:     envio.codigoDane || null,
       transportadora: envio.transportadora || null,
     },
-    guia: pedido.guia?.numeroGuia
+    guia: pedido.guia?.numeroGuia && !pedido.cancelacion
       ? { numeroGuia: pedido.guia.numeroGuia, rastreoUrl: pedido.guia.rastreoUrl || null }
+      : null,
+    // Solo si la tienda canceló el pedido (página "Pedido cancelado").
+    cancelacion: pedido.cancelacion
+      ? {
+          motivo:          pedido.cancelacion.motivo,
+          agotados:        pedido.cancelacion.agotados || [],
+          monto:           pedido.cancelacion.monto,
+          estadoReembolso: pedido.cancelacion.estadoReembolso,
+          canceladoEn:     pedido.cancelacion.canceladoEn,
+        }
       : null,
   };
 }
@@ -263,6 +290,7 @@ module.exports = {
   buscarPorGuia,
   guardarGuia,
   guardarFactura,
+  guardarCancelacion,
   descontarStock,
   listarTodos,
   listarPorEmail,
