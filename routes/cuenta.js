@@ -24,7 +24,7 @@ const { createClient } = require('@supabase/supabase-js')
 const router = express.Router()
 const verificarAuth = require('../middleware/verificarAuth')
 const { supabaseAdmin } = require('../database/supabaseAdmin')
-const { proveedoresDe } = require('../services/usuarios')
+const { proveedoresDe, nombreVisible } = require('../services/usuarios')
 const { municipios } = require('../data/municipios-co.json')
 
 const MUNICIPIO = new Map(municipios.map((m) => [m.dane, m]))
@@ -56,7 +56,7 @@ function nombresDe(m) {
 function perfilDe(user) {
   const m = user.user_metadata || {}
   return {
-    nombre:          m.full_name || m.name || '',
+    nombre:          nombreVisible(m) || '',
     ...nombresDe(m),
     email:           user.email,
     telefono:        m.telefono || '',

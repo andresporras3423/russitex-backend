@@ -13,7 +13,7 @@
 const express       = require('express')
 const router        = express.Router()
 const verificarAuth = require('../middleware/verificarAuth')
-const { comoEntra, nombreProveedor } = require('../services/usuarios')
+const { comoEntra, nombreProveedor, nombreVisible } = require('../services/usuarios')
 const { enviarCorreo, configurado }  = require('../services/correo')
 const { createClient } = require('@supabase/supabase-js')
 
@@ -124,7 +124,7 @@ router.post('/login', async (req, res) => {
     usuario: {
       id:     data.user.id,
       email:  data.user.email,
-      nombre: data.user.user_metadata?.full_name
+      nombre: nombreVisible(data.user.user_metadata)
     }
   })
 })

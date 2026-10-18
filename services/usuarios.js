@@ -81,4 +81,13 @@ function nombreProveedor(p) {
   return NOMBRES[p] || p
 }
 
-module.exports = { comoEntra, nombreProveedor, proveedoresDe }
+// Nombre para mostrar. Primero los nombres y apellidos que guarda Russitex
+// (Mi cuenta, checkout); luego el del proveedor. OJO: con Google o Facebook,
+// Supabase REESCRIBE full_name y name en cada inicio de sesión con el nombre
+// de esa cuenta, así que no sirven para guardar el nombre propio.
+function nombreVisible(meta = {}) {
+  const propio = `${meta.nombres || ''} ${meta.apellidos || ''}`.trim()
+  return propio || meta.full_name || meta.name || null
+}
+
+module.exports = { comoEntra, nombreProveedor, proveedoresDe, nombreVisible }

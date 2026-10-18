@@ -9,6 +9,7 @@
 //  router.get('/mis-pedidos', verificarAuth, (req, res) => { ... })
 // ============================================================
 const { createClient } = require('@supabase/supabase-js')
+const { nombreVisible } = require('../services/usuarios')
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -38,7 +39,7 @@ async function verificarAuth(req, res, next) {
   req.usuario = {
     id:     user.id,
     email:  user.email,
-    nombre: user.user_metadata?.full_name || user.user_metadata?.name || null,
+    nombre: nombreVisible(user.user_metadata),
     avatar: user.user_metadata?.avatar_url || null,
     proveedor: user.app_metadata?.provider,  // 'google', 'facebook', 'email'
     // Solo con el correo verificado se le puede creer que es suyo (p. ej.
