@@ -28,8 +28,9 @@ function estadoParaCliente(p) {
   if (p.estado === 'ANULADO') return { clave: 'cancelado', texto: 'Cancelado', color: 'rojo', pago: 'Anulado' }
   // Pagado pero cancelado por la tienda (agotado...): lleva reembolso.
   if (p.cancelacion) {
-    const reembolsado = p.cancelacion.estadoReembolso === 'reembolsado'
-    return { clave: 'cancelado', texto: 'Cancelado', color: 'rojo', pago: reembolsado ? 'Reembolsado' : 'Reembolso en proceso' }
+    // Dos momentos: cancelado con la devolución en camino, y reembolsado (ya no queda nada pendiente).
+    if (p.cancelacion.estadoReembolso === 'reembolsado') return { clave: 'reembolsado', texto: 'Reembolsado', color: 'gris', pago: 'Reembolsado' }
+    return { clave: 'cancelado', texto: 'Cancelado', color: 'rojo', pago: 'Reembolso en proceso' }
   }
 
   // APROBADO: el avance lo da la guía (lo actualiza el webhook de Envia).
