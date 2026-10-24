@@ -123,6 +123,7 @@ router.post('/preparar', async (req, res) => {
         modalidad: 'domicilio',
         costo: costoEnvio,                          // lo que paga el cliente
         envioGratis: Boolean(cotizacion.envioGratis),
+        descuentoEnvio: Math.round(cotizacion.descuentoEnvio || 0),   // lo que pone la tienda
         costoReal: Math.round(cotizacion.costoReal ?? cotizacion.costoTotal),   // lo que cuesta la guía
         transportadora: cotizacion.transportadora,
         carrier: cotizacion.carrier,

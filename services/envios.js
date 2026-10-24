@@ -284,15 +284,31 @@ async function resolverCarrito(carrito) {
 const _cotizaciones = new Map();
 const VIGENCIA_COTIZACION_MS = 10 * 60 * 1000;
 
-// Envío gratis: si el subtotal llega al umbral de tienda_info, el cliente
-// paga $0. La transportadora y el servicio se conservan porque la guía se
-// crea igual (la paga la tienda); costoReal queda como referencia.
-async function aplicarEnvioGratis(resultado, subtotal) {
+// Beneficio de envío desde el monto de tienda_info (envio_gratis_desde):
+//   - Bogotá: gratis (el cliente paga $0).
+//   - Resto del país: ENVIO_DESCUENTO_PORCENTAJE % del envío (50 por
+//     defecto), con un máximo de ENVIO_DESCUENTO_TOPE pesos (20.000 por
+//     defecto; 0 = sin máximo). Así un envío a San Andrés no le cuesta a la
+//     tienda más que eso.
+// La guía se crea igual con la transportadora cotizada (la diferencia la
+// paga la tienda); costoReal queda como referencia.
+const DANE_BOGOTA = '11001';
+
+async function aplicarEnvioGratis(resultado, destino = {}) {
   const c = resultado.cotizacion;
   if (!c) return resultado;
   const umbral = await umbralEnvioGratis().catch(() => null);
-  if (!umbral || !(Number(subtotal) >= umbral)) return resultado;
-  return { ...resultado, cotizacion: { ...c, costoTotal: 0, costoReal: c.costoTotal, envioGratis: true } };
+  if (!umbral || !(Number(destino.valorDeclarado) >= umbral)) return resultado;
+
+  if (String(destino.codigoDane || '').startsWith(DANE_BOGOTA)) {
+    return { ...resultado, cotizacion: { ...c, costoTotal: 0, costoReal: c.costoTotal, envioGratis: true, descuentoEnvio: c.costoTotal } };
+  }
+  const porcentaje = Number(process.env.ENVIO_DESCUENTO_PORCENTAJE ?? 50);
+  const tope = Number(process.env.ENVIO_DESCUENTO_TOPE ?? 20000);
+  let descuento = Math.round((c.costoTotal * porcentaje) / 100 / 100) * 100;   // redondeado a $100
+  if (tope > 0) descuento = Math.min(descuento, tope);
+  if (!(descuento > 0)) return resultado;
+  return { ...resultado, cotizacion: { ...c, costoTotal: c.costoTotal - descuento, costoReal: c.costoTotal, envioGratis: false, descuentoEnvio: descuento } };
 }
 
 /**
@@ -319,7 +335,7 @@ async function cotizarEnvio({ carrito, destino }) {
   const paquetesE = paquetesEnvia(paquetes, destino.valorDeclarado);
   const clave = JSON.stringify([destino.codigoDane, paquetesE]);
   const guardada = _cotizaciones.get(clave);
-  if (guardada && Date.now() - guardada.en < VIGENCIA_COTIZACION_MS) return aplicarEnvioGratis({ ...base, ...guardada.resultado }, destino.valorDeclarado);
+  if (guardada && Date.now() - guardada.en < VIGENCIA_COTIZACION_MS) return aplicarEnvioGratis({ ...base, ...guardada.resultado }, destino);
 
   const opciones = await tarifas('produccion', { origen, destino: destinoEnvia, paquetes: paquetesE });
   const masBarata = opciones[0] || null;
@@ -337,7 +353,7 @@ async function cotizarEnvio({ carrito, destino }) {
     aviso: masBarata ? null : 'No hay transportadoras con cobertura para esa ciudad.',
   };
   if (masBarata) _cotizaciones.set(clave, { en: Date.now(), resultado });
-  return aplicarEnvioGratis({ ...base, ...resultado }, destino.valorDeclarado);
+  return aplicarEnvioGratis({ ...base, ...resultado }, destino);
 }
 
 // Lista de municipios de Colombia con su código DANE para el checkout.

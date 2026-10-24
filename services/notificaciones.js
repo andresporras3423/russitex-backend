@@ -220,7 +220,7 @@ function armarCorreoPedidoTienda(pedido) {
     : [
         `ENVÍO a ${lugar}`,
         `Dirección: ${envio.direccion || '(sin dirección)'}`,
-        `Transportadora: ${envio.transportadora || guia.carrier || '-'}${envio.envioGratis ? ' (envío gratis: lo paga la tienda)' : ''}`,
+        `Transportadora: ${envio.transportadora || guia.carrier || '-'}${envio.envioGratis ? ' (envío gratis: lo paga la tienda)' : envio.descuentoEnvio ? ` (la tienda pone ${pesos(envio.descuentoEnvio)} del envío)` : ''}`,
         guia.numeroGuia
           ? `Guía: ${guia.numeroGuia}${guia.ambiente === 'pruebas' ? ' (PRUEBA, no es real)' : ''}`
           : 'Guía: NO se creó. Hay que generarla en Envia.',
