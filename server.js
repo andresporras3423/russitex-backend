@@ -13,6 +13,8 @@ app.use(cors())
 // parser de 15 MB nunca llegaría a actuar.
 // 10 MB de imagen -> ~13.4 MB en base64, más el resto del formulario.
 app.use('/api/asesoria', express.json({ limit: '15mb' }), require('./routes/asesoria')); // ✉️ Formulario de asesoría
+// Mismo motivo: el panel de administrador sube imágenes (máx. 6 MB -> ~8 MB en base64).
+app.use('/api/admin', express.json({ limit: '10mb' }), require('./routes/admin')); // 🛠️ Panel de administrador
 
 // Se guarda también el cuerpo tal cual llegó: la firma de los avisos de
 // Envia se calcula sobre esos bytes exactos, no sobre el JSON re-armado.

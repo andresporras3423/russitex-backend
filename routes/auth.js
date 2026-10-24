@@ -14,6 +14,7 @@ const express       = require('express')
 const router        = express.Router()
 const verificarAuth = require('../middleware/verificarAuth')
 const { comoEntra, nombreProveedor, nombreVisible } = require('../services/usuarios')
+const { esAdmin } = require('../middleware/soloAdmin')
 const { enviarCorreo, configurado }  = require('../services/correo')
 const { createClient } = require('@supabase/supabase-js')
 
@@ -39,7 +40,9 @@ router.get('/perfil', verificarAuth, async (req, res) => {
     email:     req.usuario.email,
     nombre:    req.usuario.nombre,
     avatar:    req.usuario.avatar,
-    proveedor: req.usuario.proveedor  // 'google', 'facebook', 'email'
+    proveedor: req.usuario.proveedor,  // 'google', 'facebook', 'email'
+    // Muestra la pestaña "Administrador". La protección real está en el backend (soloAdmin).
+    esAdmin:   req.usuario.emailConfirmado && esAdmin(req.usuario.email),
   })
 })
 
@@ -124,7 +127,8 @@ router.post('/login', async (req, res) => {
     usuario: {
       id:     data.user.id,
       email:  data.user.email,
-      nombre: nombreVisible(data.user.user_metadata)
+      nombre: nombreVisible(data.user.user_metadata),
+      esAdmin: Boolean(data.user.email_confirmed_at) && esAdmin(data.user.email),
     }
   })
 })

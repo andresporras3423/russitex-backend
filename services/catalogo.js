@@ -165,4 +165,10 @@ async function obtenerCatalogo({ forzar = false } = {}) {
   }
 }
 
-module.exports = { obtenerCatalogo }
+// El panel de administrador cambia disponibilidad e imágenes: la próxima
+// consulta reconstruye el catálogo (si falla, se sirve la copia anterior).
+function invalidarCatalogo() {
+  cache.expira = 0
+}
+
+module.exports = { obtenerCatalogo, invalidarCatalogo }
