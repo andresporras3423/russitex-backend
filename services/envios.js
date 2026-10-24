@@ -22,7 +22,6 @@
 // ============================================================
 const { municipios } = require('../data/municipios-co.json');
 const { obtenerCatalogo } = require('./catalogo');
-const { umbralEnvioGratis } = require('./tienda');
 
 const ENVIA = {
   produccion: {
@@ -284,34 +283,8 @@ async function resolverCarrito(carrito) {
 const _cotizaciones = new Map();
 const VIGENCIA_COTIZACION_MS = 10 * 60 * 1000;
 
-// Beneficio de envío desde el monto de tienda_info (envio_gratis_desde):
-//   - Bogotá: gratis, hasta ENVIO_DESCUENTO_TOPE pesos (20.000 por defecto).
-//   - Resto del país: ENVIO_DESCUENTO_PORCENTAJE % del envío (50 por
-//     defecto), con el mismo máximo.
-// Así la tienda nunca pone más del tope por pedido, sin importar el destino
-// ni el peso (0 = sin máximo). Si el envío cuesta más, el cliente paga la
-// diferencia.
-// La guía se crea igual con la transportadora cotizada (la diferencia la
-// paga la tienda); costoReal queda como referencia.
-const DANE_BOGOTA = '11001';
-
-async function aplicarEnvioGratis(resultado, destino = {}) {
-  const c = resultado.cotizacion;
-  if (!c) return resultado;
-  const umbral = await umbralEnvioGratis().catch(() => null);
-  if (!umbral || !(Number(destino.valorDeclarado) >= umbral)) return resultado;
-
-  // El tope vale para todos: un pedido pesado, aun en Bogotá, puede costar
-  // $40.000+ de envío (p. ej. 10 cajas de tiza).
-  const tope = Number(process.env.ENVIO_DESCUENTO_TOPE ?? 20000);
-  const enBogota = String(destino.codigoDane || '').startsWith(DANE_BOGOTA);
-  const porcentaje = enBogota ? 100 : Number(process.env.ENVIO_DESCUENTO_PORCENTAJE ?? 50);
-  let descuento = enBogota ? c.costoTotal : Math.round((c.costoTotal * porcentaje) / 100 / 100) * 100;   // redondeado a $100
-  if (tope > 0) descuento = Math.min(descuento, tope);
-  if (!(descuento > 0)) return resultado;
-  const paga = c.costoTotal - descuento;
-  return { ...resultado, cotizacion: { ...c, costoTotal: paga, costoReal: c.costoTotal, envioGratis: paga === 0, descuentoEnvio: descuento } };
-}
+// El envío lo paga siempre el cliente completo (el descuento por compras
+// grandes es sobre los productos: services/descuentos.js).
 
 /**
  * Cotiza el envío de un carrito con Envia (producción) y elige la opción
@@ -337,7 +310,7 @@ async function cotizarEnvio({ carrito, destino }) {
   const paquetesE = paquetesEnvia(paquetes, destino.valorDeclarado);
   const clave = JSON.stringify([destino.codigoDane, paquetesE]);
   const guardada = _cotizaciones.get(clave);
-  if (guardada && Date.now() - guardada.en < VIGENCIA_COTIZACION_MS) return aplicarEnvioGratis({ ...base, ...guardada.resultado }, destino);
+  if (guardada && Date.now() - guardada.en < VIGENCIA_COTIZACION_MS) return { ...base, ...guardada.resultado };
 
   const opciones = await tarifas('produccion', { origen, destino: destinoEnvia, paquetes: paquetesE });
   const masBarata = opciones[0] || null;
@@ -355,7 +328,7 @@ async function cotizarEnvio({ carrito, destino }) {
     aviso: masBarata ? null : 'No hay transportadoras con cobertura para esa ciudad.',
   };
   if (masBarata) _cotizaciones.set(clave, { en: Date.now(), resultado });
-  return aplicarEnvioGratis({ ...base, ...resultado }, destino);
+  return { ...base, ...resultado };
 }
 
 // Lista de municipios de Colombia con su código DANE para el checkout.

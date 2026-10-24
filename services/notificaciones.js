@@ -75,9 +75,13 @@ function tablaProductos(pedido) {
       <td style="padding:8px 10px;border-bottom:1px solid ${COLOR.borde};text-align:right;white-space:nowrap">${pesos((i.precio || 0) * (i.cantidad || 1))}</td>
     </tr>`).join('')
   const envio = Number(pedido.envio?.costo) || 0
+  const desc = pedido.descuento?.monto > 0
+    ? `<tr><td style="padding:8px 10px">Descuento ${pedido.descuento.porcentaje}% por tu compra</td><td style="padding:8px 10px;text-align:right">-${pesos(pedido.descuento.monto)}</td></tr>`
+    : ''
   return `
     <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px;margin:6px 0 4px">
       ${filas}
+      ${desc}
       <tr><td style="padding:8px 10px">Envío</td><td style="padding:8px 10px;text-align:right">${envio ? pesos(envio) : 'Gratis'}</td></tr>
       <tr><td style="padding:8px 10px;font-weight:700;background:${COLOR.fondo}">Total pagado</td>
           <td style="padding:8px 10px;font-weight:700;background:${COLOR.fondo};text-align:right">${pesos(pedido.totalPesos)}</td></tr>
@@ -87,7 +91,8 @@ function tablaProductos(pedido) {
 function textoProductos(pedido) {
   const lineas = (pedido.carrito || []).map((i) => `- ${nombreItem(i)} x ${i.cantidad}: ${pesos((i.precio || 0) * (i.cantidad || 1))}`)
   const envio = Number(pedido.envio?.costo) || 0
-  return [...lineas, `Envío: ${envio ? pesos(envio) : 'Gratis'}`, `Total pagado: ${pesos(pedido.totalPesos)}`].join('\n')
+  const desc = pedido.descuento?.monto > 0 ? [`Descuento ${pedido.descuento.porcentaje}%: -${pesos(pedido.descuento.monto)}`] : []
+  return [...lineas, ...desc, `Envío: ${envio ? pesos(envio) : 'Gratis'}`, `Total pagado: ${pesos(pedido.totalPesos)}`].join('\n')
 }
 
 // Envía sin dejar que un fallo de correo se propague.
@@ -220,7 +225,7 @@ function armarCorreoPedidoTienda(pedido) {
     : [
         `ENVÍO a ${lugar}`,
         `Dirección: ${envio.direccion || '(sin dirección)'}`,
-        `Transportadora: ${envio.transportadora || guia.carrier || '-'}${envio.envioGratis ? ' (envío gratis: lo paga la tienda)' : envio.descuentoEnvio ? ` (la tienda pone ${pesos(envio.descuentoEnvio)} del envío)` : ''}`,
+        `Transportadora: ${envio.transportadora || guia.carrier || '-'}`,
         guia.numeroGuia
           ? `Guía: ${guia.numeroGuia}${guia.ambiente === 'pruebas' ? ' (PRUEBA, no es real)' : ''}`
           : 'Guía: NO se creó. Hay que generarla en Envia.',

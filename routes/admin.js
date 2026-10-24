@@ -233,6 +233,7 @@ router.get('/pedidos/:ref', async (req, res) => {
       guia: p.guia ? { numeroGuia: p.guia.numeroGuia, rastreoUrl: p.guia.rastreoUrl, etiquetaUrl: p.guia.etiquetaUrl, estado: p.guia.estado || null, ambiente: p.guia.ambiente } : null,
       factura: p.factura || null,
       cancelacion: p.cancelacion || null,
+      descuento: p.descuento || null,
     })
   } catch (e) { fallo(res, e, 'detalle pedido') }
 })

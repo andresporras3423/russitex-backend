@@ -30,6 +30,7 @@ function aPedido(fila) {
     guia:          fila.guia ?? null,
     factura:       fila.factura ?? null,
     cancelacion:   fila.cancelacion ?? null,
+    descuento:     fila.descuento ?? null,
     creadoEn:      fila.creado_en,
     actualizadoEn: fila.actualizado_en,
   }
@@ -40,7 +41,7 @@ function aPedido(fila) {
 // Crear pedido con estado PENDIENTE.
 // Se llama antes de mostrar el widget de Wompi al usuario.
 // ------------------------------------------------------------
-async function crearPendiente({ referencia, carrito, cliente, envio, totalPesos }) {
+async function crearPendiente({ referencia, carrito, cliente, envio, totalPesos, descuento = null }) {
   const { data, error } = await supabaseAdmin()
     .from('pedidos')
     .insert({
@@ -50,6 +51,7 @@ async function crearPendiente({ referencia, carrito, cliente, envio, totalPesos 
       envio,
       carrito,
       total_pesos: totalPesos,
+      descuento,                 // { porcentaje, monto } o null
     })
     .select()
     .single()
@@ -211,6 +213,7 @@ function resumenPublico(pedido, { estado, metodoPago } = {}) {
     referencia: pedido.referencia,
     estado:     estado || pedido.estado,   // PENDIENTE | APROBADO | RECHAZADO | ANULADO | ERROR
     total:      pedido.totalPesos,
+    descuento:  pedido.descuento || null,   // { porcentaje, monto }
     cliente:    pedido.cliente?.nombre,
     modalidad:  envio.modalidad || null,   // domicilio | tienda
     creadoEn:   pedido.creadoEn,

@@ -36,13 +36,13 @@ async function obtenerInfoTienda({ forzar = false } = {}) {
 }
 
 /**
- * Umbral de envío gratis en pesos, sacado del texto de `envio_gratis_desde`
- * (p. ej. "Compras superiores a $350.000 COP" -> 350000). Es el mismo texto
- * que muestran el carrito y la web, así nunca se contradicen. Devuelve null
- * si no hay umbral definido.
+ * Monto desde el que aplica el descuento por compra grande, sacado del texto
+ * de `descuento_compra_desde` (p. ej. "Compras desde $350.000 COP" -> 350000).
+ * Es el mismo texto que muestran el carrito y la web, así nunca se
+ * contradicen. Devuelve null si no hay monto definido.
  */
-async function umbralEnvioGratis() {
-  const fila = (await obtenerInfoTienda()).find((f) => f.clave === 'envio_gratis_desde')
+async function umbralDescuento() {
+  const fila = (await obtenerInfoTienda()).find((f) => f.clave === 'descuento_compra_desde')
   const n = Number(String(fila?.valor || '').replace(/[^\d]/g, ''))
   return Number.isFinite(n) && n > 0 ? n : null
 }
@@ -73,4 +73,4 @@ function formatearParaPrompt(filas) {
   return bloques.join('\n\n')
 }
 
-module.exports = { obtenerInfoTienda, formatearParaPrompt, umbralEnvioGratis }
+module.exports = { obtenerInfoTienda, formatearParaPrompt, umbralDescuento }

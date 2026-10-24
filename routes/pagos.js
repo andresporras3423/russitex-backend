@@ -7,6 +7,7 @@ const wompi    = require('../services/wompi');
 const pedidos  = require('../services/pedidos');   // tu lógica de BD
 const envios   = require('../services/envios');
 const { obtenerCatalogo } = require('../services/catalogo');
+const { calcularDescuento } = require('../services/descuentos');
 
 const MAX_CANTIDAD = 9999;
 
@@ -122,9 +123,7 @@ router.post('/preparar', async (req, res) => {
         ...envio,
         modalidad: 'domicilio',
         costo: costoEnvio,                          // lo que paga el cliente
-        envioGratis: Boolean(cotizacion.envioGratis),
-        descuentoEnvio: Math.round(cotizacion.descuentoEnvio || 0),   // lo que pone la tienda
-        costoReal: Math.round(cotizacion.costoReal ?? cotizacion.costoTotal),   // lo que cuesta la guía
+        costoReal: costoEnvio,                      // lo que cuesta la guía (lo paga el cliente)
         transportadora: cotizacion.transportadora,
         carrier: cotizacion.carrier,
         servicio: cotizacion.servicio,
@@ -132,7 +131,9 @@ router.post('/preparar', async (req, res) => {
     } else {
       envio = { ...envio, modalidad: 'tienda', costo: 0, codigoDane: null, transportadora: null };
     }
-    const totalPesos = totalProductos + costoEnvio;
+    // Descuento por compra grande: solo sobre los productos, nunca el envío.
+    const descuento = await calcularDescuento(carrito);
+    const totalPesos = totalProductos - descuento.monto + costoEnvio;
 
     // Wompi trabaja en CENTAVOS, así que multiplicamos por 100
     const totalCentavos = totalPesos * 100;
@@ -151,6 +152,7 @@ router.post('/preparar', async (req, res) => {
       cliente,
       envio,
       totalPesos,
+      descuento: descuento.monto > 0 ? { porcentaje: descuento.porcentaje, monto: descuento.monto } : null,
       estado: 'PENDIENTE'
     });
 
@@ -171,6 +173,7 @@ router.post('/preparar', async (req, res) => {
       // Resumen para mostrar al usuario
       resumen: {
         totalPesos,
+        descuento: descuento.monto,
         cantidadProductos: carrito.reduce((sum, i) => sum + i.cantidad, 0)
       }
     });

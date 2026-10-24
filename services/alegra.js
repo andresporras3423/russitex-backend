@@ -319,10 +319,13 @@ async function generarFactura(pedido) {
   const { referencia, cliente, envio, carrito, metodoPago } = pedido
   const emitir = emitirFacturas()
 
+  // Descuento por compra grande: % por línea de producto (el envío no lleva).
+  const descuentoPct = Number(pedido.descuento?.porcentaje) || 0
   const items = (carrito || []).map((item) => ({
     id: String(item.productoId),
     price: Number(item.precio),
     quantity: Number(item.cantidad),
+    ...(descuentoPct > 0 ? { discount: descuentoPct } : {}),
     ...(item.variante ? { description: item.variante } : {}),
   }))
 
