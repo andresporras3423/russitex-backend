@@ -285,11 +285,12 @@ const _cotizaciones = new Map();
 const VIGENCIA_COTIZACION_MS = 10 * 60 * 1000;
 
 // Beneficio de envío desde el monto de tienda_info (envio_gratis_desde):
-//   - Bogotá: gratis (el cliente paga $0).
+//   - Bogotá: gratis, hasta ENVIO_DESCUENTO_TOPE pesos (20.000 por defecto).
 //   - Resto del país: ENVIO_DESCUENTO_PORCENTAJE % del envío (50 por
-//     defecto), con un máximo de ENVIO_DESCUENTO_TOPE pesos (20.000 por
-//     defecto; 0 = sin máximo). Así un envío a San Andrés no le cuesta a la
-//     tienda más que eso.
+//     defecto), con el mismo máximo.
+// Así la tienda nunca pone más del tope por pedido, sin importar el destino
+// ni el peso (0 = sin máximo). Si el envío cuesta más, el cliente paga la
+// diferencia.
 // La guía se crea igual con la transportadora cotizada (la diferencia la
 // paga la tienda); costoReal queda como referencia.
 const DANE_BOGOTA = '11001';
@@ -300,15 +301,16 @@ async function aplicarEnvioGratis(resultado, destino = {}) {
   const umbral = await umbralEnvioGratis().catch(() => null);
   if (!umbral || !(Number(destino.valorDeclarado) >= umbral)) return resultado;
 
-  if (String(destino.codigoDane || '').startsWith(DANE_BOGOTA)) {
-    return { ...resultado, cotizacion: { ...c, costoTotal: 0, costoReal: c.costoTotal, envioGratis: true, descuentoEnvio: c.costoTotal } };
-  }
-  const porcentaje = Number(process.env.ENVIO_DESCUENTO_PORCENTAJE ?? 50);
+  // El tope vale para todos: un pedido pesado, aun en Bogotá, puede costar
+  // $40.000+ de envío (p. ej. 10 cajas de tiza).
   const tope = Number(process.env.ENVIO_DESCUENTO_TOPE ?? 20000);
-  let descuento = Math.round((c.costoTotal * porcentaje) / 100 / 100) * 100;   // redondeado a $100
+  const enBogota = String(destino.codigoDane || '').startsWith(DANE_BOGOTA);
+  const porcentaje = enBogota ? 100 : Number(process.env.ENVIO_DESCUENTO_PORCENTAJE ?? 50);
+  let descuento = enBogota ? c.costoTotal : Math.round((c.costoTotal * porcentaje) / 100 / 100) * 100;   // redondeado a $100
   if (tope > 0) descuento = Math.min(descuento, tope);
   if (!(descuento > 0)) return resultado;
-  return { ...resultado, cotizacion: { ...c, costoTotal: c.costoTotal - descuento, costoReal: c.costoTotal, envioGratis: false, descuentoEnvio: descuento } };
+  const paga = c.costoTotal - descuento;
+  return { ...resultado, cotizacion: { ...c, costoTotal: paga, costoReal: c.costoTotal, envioGratis: paga === 0, descuentoEnvio: descuento } };
 }
 
 /**
