@@ -9,7 +9,9 @@
 //    PUT    /api/admin/variantes/:id/disponible      { disponible }
 //    POST   /api/admin/productos/:id/imagenes        { tipo, datosBase64 }  sube una imagen al final
 //    PUT    /api/admin/productos/:id/imagenes/orden  { ids: [...] }  la primera es la portada
-//    DELETE /api/admin/imagenes/:imgId
+//    POST   /api/admin/variantes/:id/imagenes        { tipo, datosBase64 }  igual, para una variante
+//    PUT    /api/admin/variantes/:id/imagenes/orden  { ids: [...] }
+//    DELETE /api/admin/imagenes/:imgId               (de producto o de variante)
 //  Pedidos
 //    GET    /api/admin/pedidos
 //    GET    /api/admin/pedidos/:ref
@@ -18,7 +20,9 @@
 //
 //  Imágenes: la galería del producto vive en producto_imagenes (variante_id
 //  nulo) y la portada del catálogo en productos_meta.imagen_url. Después de
-//  cada cambio la portada = la primera de la galería. Las subidas van al
+//  cada cambio la portada = la primera de la galería. Cada variante (color,
+//  diseño, forma…) puede tener su propia galería (variante_id = su id): se
+//  muestra al elegirla y, si no tiene, la tienda usa la del producto. Las subidas van al
 //  bucket productos_russitex, carpeta subidas/<id>/; solo esas se borran
 //  del bucket (los archivos viejos los comparten varios productos).
 // ============================================================
@@ -51,23 +55,24 @@ const sinError = ({ data, error }) => { if (error) throw new Error(error.message
 // Productos
 // ------------------------------------------------------------
 async function galerias() {
-  const filas = sinError(await db().from('producto_imagenes').select('id, alegra_id, url, orden')
-    .is('variante_id', null).order('orden').order('id'))
-  const porProducto = new Map()
+  const filas = sinError(await db().from('producto_imagenes').select('id, alegra_id, variante_id, url, orden')
+    .order('orden').order('id'))
+  const porProducto = new Map(), porVariante = new Map()
   for (const f of filas) {
-    if (!porProducto.has(f.alegra_id)) porProducto.set(f.alegra_id, [])
-    porProducto.get(f.alegra_id).push({ id: f.id, url: f.url })
+    const [mapa, clave] = f.variante_id == null ? [porProducto, f.alegra_id] : [porVariante, f.variante_id]
+    if (!mapa.has(clave)) mapa.set(clave, [])
+    mapa.get(clave).push({ id: f.id, url: f.url })
   }
-  return porProducto
+  return { porProducto, porVariante }
 }
 
 router.get('/productos', async (req, res) => {
   try {
     const { productos } = await obtenerCatalogo()
     const metas = sinError(await db().from('productos_meta').select('alegra_id, disponible, imagen_url'))
-    const variantes = sinError(await db().from('producto_variantes').select('id, alegra_id, nombre, disponible, orden').order('orden').order('id'))
+    const variantes = sinError(await db().from('producto_variantes').select('id, alegra_id, nombre, disponible, hex, orden').order('orden').order('id'))
     const metaPorId = new Map(metas.map((m) => [String(m.alegra_id), m]))
-    let fotos = await galerias()
+    let { porProducto: fotos, porVariante } = await galerias()
 
     // Productos con portada pero sin galería (los cargados antes del panel):
     // la portada pasa a ser la primera imagen de su galería, una sola vez.
@@ -76,7 +81,7 @@ router.get('/productos', async (req, res) => {
       sinError(await db().from('producto_imagenes').insert(sinGaleria.map((p) => ({
         alegra_id: String(p.id), variante_id: null, url: metaPorId.get(String(p.id)).imagen_url, orden: 0,
       }))))
-      fotos = await galerias()
+      ;({ porProducto: fotos, porVariante } = await galerias())
     }
 
     res.json({
@@ -89,7 +94,7 @@ router.get('/productos', async (req, res) => {
           disponible: meta.disponible !== false,
           imagenes: fotos.get(String(p.id)) || [],
           variantes: variantes.filter((v) => String(v.alegra_id) === String(p.id))
-            .map((v) => ({ id: v.id, nombre: v.nombre, disponible: v.disponible !== false })),
+            .map((v) => ({ id: v.id, nombre: v.nombre, disponible: v.disponible !== false, hex: v.hex || null, imagenes: porVariante.get(v.id) || [] })),
         }
       }),
     })
@@ -124,48 +129,76 @@ async function sincronizarPortada(alegraId) {
   invalidarCatalogo()
 }
 
-const galeriaDe = async (alegraId) => (await galerias()).get(alegraId) || []
+// Galería de un producto (varianteId null) o de una de sus variantes.
+async function galeriaDe(alegraId, varianteId = null) {
+  let q = db().from('producto_imagenes').select('id, url').eq('alegra_id', alegraId)
+  q = varianteId == null ? q.is('variante_id', null) : q.eq('variante_id', varianteId)
+  return sinError(await q.order('orden').order('id'))
+}
+// Tras un cambio: la portada del catálogo solo depende de las fotos del producto.
+async function trasCambio(alegraId, varianteId) {
+  if (varianteId == null) await sincronizarPortada(alegraId)
+  else invalidarCatalogo()
+}
+async function buscarVariante(id) {
+  const filas = sinError(await db().from('producto_variantes').select('id, alegra_id').eq('id', id))
+  return filas[0] || null
+}
 
-router.post('/productos/:id/imagenes', async (req, res) => {
+async function subirImagen(req, res, alegraId, varianteId) {
   try {
-    const alegraId = req.params.id
     const ext = TIPOS[req.body?.tipo]
     if (!ext) return res.status(400).json({ error: 'Solo se aceptan imágenes JPG, PNG o WebP.' })
     const buffer = Buffer.from(String(req.body?.datosBase64 || ''), 'base64')
     if (!buffer.length) return res.status(400).json({ error: 'No llegó la imagen.' })
     if (buffer.length > MAX_BYTES) return res.status(400).json({ error: 'La imagen pesa más de 6 MB.' })
 
-    const ruta = `subidas/${alegraId}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`
+    const carpeta = varianteId == null ? `subidas/${alegraId}` : `subidas/${alegraId}/v${varianteId}`
+    const ruta = `${carpeta}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`
     sinError(await db().storage.from(BUCKET).upload(ruta, buffer, { contentType: req.body.tipo, upsert: false }))
     const url = db().storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl
 
-    const actuales = await galeriaDe(alegraId)
-    sinError(await db().from('producto_imagenes').insert({ alegra_id: alegraId, variante_id: null, url, orden: actuales.length }))
-    await sincronizarPortada(alegraId)
-    res.json({ imagenes: await galeriaDe(alegraId) })
+    const actuales = await galeriaDe(alegraId, varianteId)
+    sinError(await db().from('producto_imagenes').insert({ alegra_id: alegraId, variante_id: varianteId, url, orden: actuales.length }))
+    await trasCambio(alegraId, varianteId)
+    res.json({ imagenes: await galeriaDe(alegraId, varianteId) })
   } catch (e) { fallo(res, e, 'subir imagen') }
-})
+}
 
-router.put('/productos/:id/imagenes/orden', async (req, res) => {
+async function ordenarImagenes(req, res, alegraId, varianteId) {
   try {
-    const alegraId = req.params.id
     const ids = (req.body?.ids || []).map(Number)
-    const actuales = await galeriaDe(alegraId)
+    const actuales = await galeriaDe(alegraId, varianteId)
     const iguales = ids.length === actuales.length && actuales.every((i) => ids.includes(i.id))
     if (!iguales) return res.status(409).json({ error: 'Las imágenes cambiaron. Recarga la página.' })
     for (const [orden, id] of ids.entries()) {
       sinError(await db().from('producto_imagenes').update({ orden, actualizado: new Date().toISOString() }).eq('id', id))
     }
-    await sincronizarPortada(alegraId)
-    res.json({ imagenes: await galeriaDe(alegraId) })
+    await trasCambio(alegraId, varianteId)
+    res.json({ imagenes: await galeriaDe(alegraId, varianteId) })
   } catch (e) { fallo(res, e, 'ordenar imágenes') }
+}
+
+router.post('/productos/:id/imagenes', (req, res) => subirImagen(req, res, req.params.id, null))
+router.put('/productos/:id/imagenes/orden', (req, res) => ordenarImagenes(req, res, req.params.id, null))
+
+// Variantes: primero se busca a qué producto pertenecen.
+router.post('/variantes/:id/imagenes', async (req, res) => {
+  const v = await buscarVariante(req.params.id).catch(() => null)
+  if (!v) return res.status(404).json({ error: 'Esa variante no existe.' })
+  subirImagen(req, res, String(v.alegra_id), v.id)
+})
+router.put('/variantes/:id/imagenes/orden', async (req, res) => {
+  const v = await buscarVariante(req.params.id).catch(() => null)
+  if (!v) return res.status(404).json({ error: 'Esa variante no existe.' })
+  ordenarImagenes(req, res, String(v.alegra_id), v.id)
 })
 
 router.delete('/imagenes/:imgId', async (req, res) => {
   try {
-    const filas = sinError(await db().from('producto_imagenes').delete().eq('id', req.params.imgId).select('alegra_id, url'))
+    const filas = sinError(await db().from('producto_imagenes').delete().eq('id', req.params.imgId).select('alegra_id, variante_id, url'))
     if (!filas.length) return res.status(404).json({ error: 'Esa imagen no existe.' })
-    const { alegra_id: alegraId, url } = filas[0]
+    const { alegra_id: alegraId, variante_id: varianteId, url } = filas[0]
     // Solo se borra el archivo si lo subió el panel (los viejos se comparten).
     const marca = `/${BUCKET}/subidas/`
     if (url.includes(marca)) {
@@ -173,8 +206,8 @@ router.delete('/imagenes/:imgId', async (req, res) => {
       const { error } = await db().storage.from(BUCKET).remove([ruta])
       if (error) console.warn('[admin] No se pudo borrar del bucket:', ruta, error.message)
     }
-    await sincronizarPortada(alegraId)
-    res.json({ imagenes: await galeriaDe(alegraId) })
+    await trasCambio(alegraId, varianteId)
+    res.json({ imagenes: await galeriaDe(alegraId, varianteId) })
   } catch (e) { fallo(res, e, 'eliminar imagen') }
 })
 
