@@ -12,6 +12,8 @@
 //    POST   /api/admin/variantes/:id/imagenes        { tipo, datosBase64 }  igual, para una variante
 //    PUT    /api/admin/variantes/:id/imagenes/orden  { ids: [...] }
 //    DELETE /api/admin/imagenes/:imgId               (de producto o de variante)
+//    GET    /api/admin/productos/:id/info            textos, categoría, unidad, peso y volumen
+//    PUT    /api/admin/productos/:id/info            guarda lo anterior (el nombre y el precio son de Alegra)
 //  Pedidos
 //    GET    /api/admin/pedidos
 //    GET    /api/admin/pedidos/:ref
@@ -209,6 +211,78 @@ router.delete('/imagenes/:imgId', async (req, res) => {
     await trasCambio(alegraId, varianteId)
     res.json({ imagenes: await galeriaDe(alegraId, varianteId) })
   } catch (e) { fallo(res, e, 'eliminar imagen') }
+})
+
+// ------------------------------------------------------------
+// Información del producto (productos_meta). El nombre, el precio y el
+// inventario vienen de Alegra y no se tocan aquí.
+// ------------------------------------------------------------
+const CATEGORIAS = ['forros', 'entretelas', 'hombreras', 'guatas', 'tizas', 'cierres', 'otros']
+const UNIDADES = ['Por metro', 'Por unidad', 'Por caja', 'Por par']
+const CAMPOS_INFO = 'alegra_id, descripcion, descripcion_larga, usos, detalles, cuidados, presentacion, categoria, unidad, variante_etiqueta, peso_unit, volumen_unit'
+
+// Texto limpio o null; corta a "max" caracteres.
+const texto = (v, max) => {
+  const t = String(v ?? '').replace(/\r\n/g, '\n').trim()
+  return t ? t.slice(0, max) : null
+}
+const numero = (v, min, max) => {
+  if (v === '' || v == null) return null
+  const n = Number(String(v).replace(',', '.'))
+  return Number.isFinite(n) && n >= min && n <= max ? n : undefined   // undefined = inválido
+}
+const aInfo = (m = {}) => ({
+  descripcion: m.descripcion || '', descripcionLarga: m.descripcion_larga || '',
+  usos: Array.isArray(m.usos) ? m.usos : [], detalles: Array.isArray(m.detalles) ? m.detalles : [],
+  cuidados: m.cuidados || '', presentacion: m.presentacion || '',
+  categoria: m.categoria || 'otros', unidad: m.unidad || 'Por unidad', varianteEtiqueta: m.variante_etiqueta || '',
+  pesoUnit: m.peso_unit ?? null, volumenUnit: m.volumen_unit ?? null,
+})
+
+router.get('/productos/:id/info', async (req, res) => {
+  try {
+    const filas = sinError(await db().from('productos_meta').select(CAMPOS_INFO).eq('alegra_id', req.params.id))
+    res.json({ info: aInfo(filas[0]), categorias: CATEGORIAS, unidades: UNIDADES })
+  } catch (e) { fallo(res, e, 'leer info producto') }
+})
+
+router.put('/productos/:id/info', async (req, res) => {
+  try {
+    const b = req.body || {}
+    const errores = []
+    const categoria = CATEGORIAS.includes(b.categoria) ? b.categoria : (errores.push('Elige una categoría válida.'), null)
+    const unidad = UNIDADES.includes(b.unidad) ? b.unidad : (errores.push('Elige una unidad de venta válida.'), null)
+    const pesoUnit = numero(b.pesoUnit, 0.001, 50)
+    const volumenUnit = numero(b.volumenUnit, 1, 500000)
+    if (pesoUnit === undefined) errores.push('El peso debe ser un número entre 0,001 y 50 kg.')
+    if (volumenUnit === undefined) errores.push('El volumen debe ser un número entre 1 y 500.000 cm³.')
+    const usos = (Array.isArray(b.usos) ? b.usos : []).map((u) => texto(u, 80)).filter(Boolean).slice(0, 12)
+    const detalles = (Array.isArray(b.detalles) ? b.detalles : [])
+      .map((d) => ({ etiqueta: texto(d?.etiqueta, 40), valor: texto(d?.valor, 120) }))
+      .filter((d) => d.etiqueta && d.valor).slice(0, 10)
+    const descripcion = texto(b.descripcion, 400)
+    if (!descripcion) errores.push('La descripción corta no puede quedar vacía: es lo primero que lee el cliente.')
+    if (errores.length) return res.status(400).json({ error: errores.join(' ') })
+
+    sinError(await db().from('productos_meta').upsert({
+      alegra_id: req.params.id,
+      descripcion,
+      descripcion_larga: texto(b.descripcionLarga, 2000),
+      usos,
+      detalles,
+      cuidados: texto(b.cuidados, 600),
+      presentacion: texto(b.presentacion, 120),
+      categoria,
+      unidad,
+      variante_etiqueta: texto(b.varianteEtiqueta, 30),
+      peso_unit: pesoUnit,
+      volumen_unit: volumenUnit,
+      actualizado: new Date().toISOString(),
+    }, { onConflict: 'alegra_id' }))
+    invalidarCatalogo()
+    const filas = sinError(await db().from('productos_meta').select(CAMPOS_INFO).eq('alegra_id', req.params.id))
+    res.json({ info: aInfo(filas[0]) })
+  } catch (e) { fallo(res, e, 'guardar info producto') }
 })
 
 // ------------------------------------------------------------
