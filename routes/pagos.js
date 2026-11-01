@@ -8,6 +8,7 @@ const pedidos  = require('../services/pedidos');   // tu lógica de BD
 const envios   = require('../services/envios');
 const { obtenerCatalogo } = require('../services/catalogo');
 const { calcularDescuento } = require('../services/descuentos');
+const { ubicacion, limpio } = require('../services/localidades');
 
 const MAX_CANTIDAD = 9999;
 
@@ -73,7 +74,10 @@ async function armarCarrito(carritoCliente) {
 //     ciudad: "Bogotá",
 //     direccion: "Calle 123 #45-67",   // solo para domicilio
 //     departamento: "Cundinamarca",
-//     codigoDane: "11001000"           // solo para domicilio
+//     codigoDane: "11001000",          // solo para domicilio
+//     localidad: "Teusaquillo",          // solo en Bogotá
+//     barrio: "Galerías",               // opcional
+//     indicaciones: "Torre B, apto 302"  // opcional
 //   }
 // }
 // ------------------------------------------------------------
@@ -122,6 +126,8 @@ router.post('/preparar', async (req, res) => {
       envio = {
         ...envio,
         modalidad: 'domicilio',
+        ...ubicacion(envio.codigoDane, envio),
+        indicaciones: limpio(envio.indicaciones, 300) || null,
         costo: costoEnvio,                          // lo que paga el cliente
         costoReal: costoEnvio,                      // lo que cuesta la guía (lo paga el cliente)
         transportadora: cotizacion.transportadora,
@@ -129,7 +135,7 @@ router.post('/preparar', async (req, res) => {
         servicio: cotizacion.servicio,
       };
     } else {
-      envio = { ...envio, modalidad: 'tienda', costo: 0, codigoDane: null, transportadora: null };
+      envio = { ...envio, modalidad: 'tienda', costo: 0, codigoDane: null, transportadora: null, localidad: null, barrio: null, indicaciones: null };
     }
     // Descuento por compra grande: solo sobre los productos, nunca el envío.
     const descuento = await calcularDescuento(carrito);

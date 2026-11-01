@@ -334,6 +334,7 @@ router.get('/pedidos/:ref', async (req, res) => {
       },
       envio: {
         modalidad: e.modalidad, direccion: e.direccion, ciudad: e.ciudad, departamento: e.departamento,
+        localidad: e.localidad || null, barrio: e.barrio || null, indicaciones: e.indicaciones || null,
         transportadora: e.transportadora, costo: Number(e.costo) || 0, envioGratis: Boolean(e.envioGratis),
       },
       productos: (p.carrito || []).map((i) => ({ nombre: i.nombre, variante: i.variante || null, cantidad: i.cantidad, unidad: i.unidad || null, precio: i.precio })),

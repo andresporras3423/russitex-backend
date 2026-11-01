@@ -10,7 +10,7 @@
 //    POST   /api/cuenta/desde-checkout          (lo último escrito en el checkout)
 //    POST   /api/cuenta/contrasena              { actual, nueva }
 //    GET    /api/cuenta/direcciones
-//    POST   /api/cuenta/direcciones             { destinatario, direccion, indicaciones?, codigoDane }
+//    POST   /api/cuenta/direcciones             { destinatario, direccion, indicaciones?, codigoDane, localidad?, barrio? }
 //    PUT    /api/cuenta/direcciones/:id         (mismos campos)
 //    POST   /api/cuenta/direcciones/:id/principal
 //    DELETE /api/cuenta/direcciones/:id
@@ -26,6 +26,7 @@ const verificarAuth = require('../middleware/verificarAuth')
 const { supabaseAdmin } = require('../database/supabaseAdmin')
 const { proveedoresDe, nombreVisible } = require('../services/usuarios')
 const { municipios } = require('../data/municipios-co.json')
+const { ubicacion, esBogota } = require('../services/localidades')
 
 const MUNICIPIO = new Map(municipios.map((m) => [m.dane, m]))
 // PEP = el PPT (Permiso por Protección Temporal): Alegra no tiene código propio.
@@ -185,6 +186,8 @@ const aDireccion = (f) => ({
   codigoDane: f.codigo_dane,
   ciudad: f.ciudad,
   departamento: f.departamento,
+  localidad: f.localidad || '',
+  barrio: f.barrio || '',
   principal: f.principal,
 })
 
@@ -208,9 +211,11 @@ function datosDireccion(body) {
   if (destinatario.length < 2) return { error: 'Escribe el nombre de quien recibe.' }
   if (direccion.length < 5) return { error: 'Escribe la dirección completa.' }
   if (!m) return { error: 'Elige el departamento y el municipio.' }
+  if (esBogota(m.dane) && !ubicacion(m.dane, body).localidad) return { error: 'Elige la localidad.' }
   return {
     destinatario, direccion, indicaciones: indicaciones || null,
     codigo_dane: m.dane, ciudad: m.ciudad, departamento: m.departamento,
+    ...ubicacion(m.dane, body),
   }
 }
 
@@ -291,7 +296,7 @@ router.post('/direcciones/:id/principal', async (req, res) => {
 //     (la primera queda como principal; nunca reemplaza ni borra otras).
 // Body: { nombres, apellidos, telefono, tipoDocumento, documento,
 //         empresa: { razonSocial, nit, regimen, celular, correo } | null,
-//         direccion?: { destinatario, direccion, codigoDane } }
+//         direccion?: { destinatario, direccion, codigoDane, localidad?, barrio? } }
 // Nunca falla hacia el cliente por un dato raro: lo inválido se ignora.
 // ------------------------------------------------------------
 const normalizar = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '')
@@ -341,8 +346,17 @@ router.post('/desde-checkout', async (req, res) => {
         const actuales = await listarDirecciones(req.usuario.id)
         // Misma dirección = mismo municipio y mismo texto (con o sin indicaciones).
         const clave = normalizar(datos.direccion)
-        const yaEsta = actuales.some((d) => d.codigoDane === datos.codigo_dane &&
+        const yaEsta = actuales.find((d) => d.codigoDane === datos.codigo_dane &&
           [d.direccion, `${d.direccion} (${d.indicaciones})`, `${d.direccion} ${d.indicaciones}`].some((t) => normalizar(t) === clave))
+        // Ya guardada desde antes de pedir localidad y barrio: se le completan.
+        const faltante = yaEsta && {
+          ...(!yaEsta.localidad && datos.localidad ? { localidad: datos.localidad } : {}),
+          ...(!yaEsta.barrio && datos.barrio ? { barrio: datos.barrio } : {}),
+        }
+        if (faltante && Object.keys(faltante).length) {
+          const { error: errAct } = await supabaseAdmin().from('direcciones').update(faltante).eq('usuario_id', req.usuario.id).eq('id', yaEsta.id)
+          if (errAct) throw new Error(errAct.message)
+        }
         if (!yaEsta && actuales.length < MAX_DIRECCIONES) {
           const { data, error: errDir } = await supabaseAdmin().from('direcciones')
             .insert({ ...datos, usuario_id: req.usuario.id, principal: false }).select('id').single()

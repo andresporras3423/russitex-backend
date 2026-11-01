@@ -12,6 +12,7 @@ const router        = express.Router()
 const verificarAuth = require('../middleware/verificarAuth')
 const pedidos       = require('../services/pedidos')
 const { categoriaDeEstado } = require('../services/envios')
+const { direccionCompleta } = require('../services/localidades')
 
 // Estado del pedido + estado del envío -> lo que ve el cliente (mismos
 // nombres y colores que la maqueta de Mi cuenta).
@@ -54,7 +55,7 @@ router.get('/mios', verificarAuth, async (req, res) => {
       pedidos: lista.map((p) => ({
         ...pedidos.resumenPublico(p),
         // Es su propio pedido (correo verificado): puede ver la dirección.
-        direccion: p.envio?.modalidad === 'tienda' ? null : (p.envio?.direccion || null),
+        direccion: p.envio?.modalidad === 'tienda' ? null : (direccionCompleta(p.envio) || null),
         estadoCliente: estadoParaCliente(p),
       })),
     })

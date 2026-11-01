@@ -40,3 +40,10 @@ create unique index if not exists direcciones_una_principal
 --  siempre filtrando por el usuario que inició sesión.
 -- ------------------------------------------------------------
 alter table direcciones enable row level security;
+
+-- ------------------------------------------------------------
+--  Localidad (solo Bogotá) y barrio (opcional). Agregadas después:
+--  en una base que ya tenía la tabla, basta con ejecutar estas dos líneas.
+-- ------------------------------------------------------------
+alter table direcciones add column if not exists localidad text;
+alter table direcciones add column if not exists barrio text;

@@ -17,6 +17,7 @@
 // ============================================================
 const { enviarCorreo, configurado } = require('./correo')
 const { obtenerInfoTienda } = require('./tienda')
+const { direccionCompleta } = require('./localidades')
 
 const COLOR = { texto: '#3B302A', suave: '#6E665C', borde: '#E0D8CB', fondo: '#F1EADC', acento: '#2C5C7C' }
 
@@ -129,7 +130,7 @@ function armarCorreoPedidoAprobado(pedido, contacto) {
     entregaHtml = `<p style="font-size:15px;line-height:1.55">Elegiste <strong>recoger en la tienda</strong>. Te avisaremos cuando tu pedido esté listo para recogerlo${escaparHtml(donde)}.${contacto.horario ? `<br><span style="color:${COLOR.suave};font-size:13px">Horario: ${escaparHtml(contacto.horario)}</span>` : ''}</p>`
     entregaTexto = `Elegiste recoger en la tienda. Te avisaremos cuando tu pedido esté listo para recogerlo${donde}.${contacto.horario ? ` Horario: ${contacto.horario}.` : ''}`
   } else if (guia?.numeroGuia) {
-    const destino = [pedido.envio?.direccion, pedido.envio?.ciudad].filter(Boolean).join(', ')
+    const destino = [direccionCompleta(pedido.envio), pedido.envio?.ciudad].filter(Boolean).join(', ')
     entregaHtml = `
       <p style="font-size:15px;line-height:1.55">Lo enviamos a <strong>${escaparHtml(destino)}</strong>${pedido.envio?.transportadora ? ` con ${escaparHtml(pedido.envio.transportadora)}` : ''}.</p>
       <p style="font-size:15px;margin:4px 0">Número de guía: <strong>${escaparHtml(guia.numeroGuia)}</strong></p>
@@ -137,7 +138,7 @@ function armarCorreoPedidoAprobado(pedido, contacto) {
       <p style="font-size:13px;color:${COLOR.suave}">Te llegarán correos con cada avance del envío.</p>`
     entregaTexto = `Lo enviamos a ${destino}${pedido.envio?.transportadora ? ` con ${pedido.envio.transportadora}` : ''}.\nNúmero de guía: ${guia.numeroGuia}${guia.rastreoUrl ? `\nRastreo: ${guia.rastreoUrl}` : ''}\nTe llegarán correos con cada avance del envío.`
   } else {
-    const destino = [pedido.envio?.direccion, pedido.envio?.ciudad].filter(Boolean).join(', ')
+    const destino = [direccionCompleta(pedido.envio), pedido.envio?.ciudad].filter(Boolean).join(', ')
     entregaHtml = `<p style="font-size:15px;line-height:1.55">Lo enviaremos a <strong>${escaparHtml(destino)}</strong>. Cuando lo despachemos te mandamos el número de guía para que lo rastrees.</p>`
     entregaTexto = `Lo enviaremos a ${destino}. Cuando lo despachemos te mandamos el número de guía para que lo rastrees.`
   }
@@ -182,7 +183,7 @@ async function avisarNovedadAlmacen(pedido, estado) {
     `Guía: ${guia.numeroGuia} (${pedido.envio?.transportadora || guia.carrier})`,
     guia.rastreoUrl ? `Rastreo: ${guia.rastreoUrl}` : '',
     `Cliente: ${c.nombre} · ${c.telefono} · ${c.email}`,
-    `Dirección: ${[pedido.envio?.direccion, pedido.envio?.ciudad].filter(Boolean).join(', ')}`,
+    `Dirección: ${[direccionCompleta(pedido.envio), pedido.envio?.ciudad].filter(Boolean).join(', ')}`,
     '',
     'Conviene llamar al cliente y revisar el caso con la transportadora.',
   ].join('\n')
@@ -224,7 +225,8 @@ function armarCorreoPedidoTienda(pedido) {
     ? ['RECOGE EN LA TIENDA', 'Tener el pedido listo y avisarle al cliente.']
     : [
         `ENVÍO a ${lugar}`,
-        `Dirección: ${envio.direccion || '(sin dirección)'}`,
+        `Dirección: ${direccionCompleta(envio) || '(sin dirección)'}`,
+        ...(envio.indicaciones ? [`Indicaciones: ${envio.indicaciones}`] : []),
         `Transportadora: ${envio.transportadora || guia.carrier || '-'}`,
         guia.numeroGuia
           ? `Guía: ${guia.numeroGuia}${guia.ambiente === 'pruebas' ? ' (PRUEBA, no es real)' : ''}`
