@@ -231,7 +231,7 @@ async function avisarCuentaSocial(email, proveedores) {
     `Pediste cambiar la contraseña de tu cuenta en Russitex, pero tu cuenta no usa contraseña: ` +
     `entra con ${lista}.\n\n` +
     `Para ingresar, ve a ${loginUrl} y usa el botón de ${lista}.\n\n` +
-    `Si no fuiste vos quien pidió esto, podés ignorar este correo: tu cuenta sigue segura.\n\n` +
+    `Si no fuiste tú quien pidió esto, puedes ignorar este correo: tu cuenta sigue segura.\n\n` +
     `Russitex`
 
   const html = `
@@ -250,7 +250,7 @@ async function avisarCuentaSocial(email, proveedores) {
         </a>
       </p>
       <p style="font-size:12px;color:#6E665C;margin:0">
-        Si no fuiste vos quien pidió esto, podés ignorar este correo: tu cuenta sigue segura.
+        Si no fuiste tú quien pidió esto, puedes ignorar este correo: tu cuenta sigue segura.
       </p>
     </div>`
 
