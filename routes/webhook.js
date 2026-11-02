@@ -220,7 +220,10 @@ function firmaWhatsappValida(req) {
 }
 
 router.post('/whatsapp', (req, res) => {
-  if (!firmaWhatsappValida(req)) return res.sendStatus(401);
+  if (!firmaWhatsappValida(req)) {
+    console.warn('⚠️  [whatsapp] Aviso con firma inválida, rechazado');   // TEMPORAL (código de Facebook)
+    return res.sendStatus(401);
+  }
   res.sendStatus(200);   // Meta reintenta si no recibe 200 rápido
   for (const entrada of req.body?.entry || []) {
     for (const cambio of entrada.changes || []) {
@@ -232,6 +235,9 @@ router.post('/whatsapp', (req, res) => {
       }
       for (const m of v.messages || []) {
         console.log(`💬 [whatsapp] Mensaje recibido de ${String(m.from).slice(0, 5)}… (${m.type}). El número de avisos no se atiende todavía.`);
+        // TEMPORAL: muestra el texto para leer el código de verificación de
+        // Facebook enviado por WhatsApp a este número. Quitar después.
+        console.log(`💬 [whatsapp] Texto: ${m.text?.body || JSON.stringify(m).slice(0, 500)}`);
       }
     }
   }
