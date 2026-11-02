@@ -92,6 +92,7 @@ router.get('/productos', async (req, res) => {
         return {
           id: String(p.id),
           nombre: p.nombre,
+          precio: p.precio,
           categoria: p.categoria,
           disponible: meta.disponible !== false,
           imagenes: fotos.get(String(p.id)) || [],
@@ -219,7 +220,9 @@ router.delete('/imagenes/:imgId', async (req, res) => {
 // ------------------------------------------------------------
 const CATEGORIAS = ['forros', 'entretelas', 'hombreras', 'guatas', 'tizas', 'cierres', 'otros']
 const UNIDADES = ['Por metro', 'Por unidad', 'Por caja', 'Por par']
-const CAMPOS_INFO = 'alegra_id, descripcion, descripcion_larga, usos, detalles, cuidados, presentacion, categoria, unidad, variante_etiqueta, peso_unit, volumen_unit'
+const ML_TIPOS = ['Rollo', 'Retazo', 'Tapiz']   // valores que acepta Mercado Libre en Rollos de Tela
+const CAMPOS_INFO = 'alegra_id, descripcion, descripcion_larga, usos, detalles, cuidados, presentacion, categoria, unidad, variante_etiqueta, peso_unit, volumen_unit, ' +
+  'ml_marca, ml_fabricante, ml_tipo_producto, ml_material, ml_modelo, ml_color, ml_ancho_cm, ml_alto_cm, ml_unidades_paquete'
 
 // Texto limpio o null; corta a "max" caracteres.
 const texto = (v, max) => {
@@ -237,12 +240,15 @@ const aInfo = (m = {}) => ({
   cuidados: m.cuidados || '', presentacion: m.presentacion || '',
   categoria: m.categoria || 'otros', unidad: m.unidad || 'Por unidad', varianteEtiqueta: m.variante_etiqueta || '',
   pesoUnit: m.peso_unit ?? null, volumenUnit: m.volumen_unit ?? null,
+  mlMarca: m.ml_marca || '', mlFabricante: m.ml_fabricante || '', mlTipoProducto: m.ml_tipo_producto || '',
+  mlMaterial: m.ml_material || '', mlModelo: m.ml_modelo || '', mlColor: m.ml_color || '',
+  mlAnchoCm: m.ml_ancho_cm ?? null, mlAltoCm: m.ml_alto_cm ?? null, mlUnidadesPaquete: m.ml_unidades_paquete ?? null,
 })
 
 router.get('/productos/:id/info', async (req, res) => {
   try {
     const filas = sinError(await db().from('productos_meta').select(CAMPOS_INFO).eq('alegra_id', req.params.id))
-    res.json({ info: aInfo(filas[0]), categorias: CATEGORIAS, unidades: UNIDADES })
+    res.json({ info: aInfo(filas[0]), categorias: CATEGORIAS, unidades: UNIDADES, mlTipos: ML_TIPOS })
   } catch (e) { fallo(res, e, 'leer info producto') }
 })
 
@@ -256,6 +262,12 @@ router.put('/productos/:id/info', async (req, res) => {
     const volumenUnit = numero(b.volumenUnit, 1, 500000)
     if (pesoUnit === undefined) errores.push('El peso debe ser un número entre 0,001 y 50 kg.')
     if (volumenUnit === undefined) errores.push('El volumen debe ser un número entre 1 y 500.000 cm³.')
+    const mlAnchoCm = numero(b.mlAnchoCm, 1, 1000)
+    const mlAltoCm = numero(b.mlAltoCm, 1, 1000)
+    if (mlAnchoCm === undefined || mlAltoCm === undefined) errores.push('El ancho y el alto para Mercado Libre deben estar entre 1 y 1.000 cm.')
+    const mlUnidadesPaquete = numero(b.mlUnidadesPaquete, 1, 1000)
+    if (mlUnidadesPaquete === undefined || (mlUnidadesPaquete != null && !Number.isInteger(mlUnidadesPaquete))) errores.push('Las unidades por paquete deben ser un número entero entre 1 y 1.000.')
+    const mlTipoProducto = b.mlTipoProducto ? (ML_TIPOS.includes(b.mlTipoProducto) ? b.mlTipoProducto : (errores.push('Elige un tipo de producto válido para Mercado Libre.'), null)) : null
     const usos = (Array.isArray(b.usos) ? b.usos : []).map((u) => texto(u, 80)).filter(Boolean).slice(0, 12)
     const detalles = (Array.isArray(b.detalles) ? b.detalles : [])
       .map((d) => ({ etiqueta: texto(d?.etiqueta, 40), valor: texto(d?.valor, 120) }))
@@ -277,6 +289,15 @@ router.put('/productos/:id/info', async (req, res) => {
       variante_etiqueta: texto(b.varianteEtiqueta, 30),
       peso_unit: pesoUnit,
       volumen_unit: volumenUnit,
+      ml_marca: texto(b.mlMarca, 60),
+      ml_fabricante: texto(b.mlFabricante, 60),
+      ml_tipo_producto: mlTipoProducto,
+      ml_material: texto(b.mlMaterial, 60),
+      ml_modelo: texto(b.mlModelo, 60),
+      ml_color: texto(b.mlColor, 40),
+      ml_ancho_cm: mlAnchoCm,
+      ml_alto_cm: mlAltoCm,
+      ml_unidades_paquete: mlUnidadesPaquete,
       actualizado: new Date().toISOString(),
     }, { onConflict: 'alegra_id' }))
     invalidarCatalogo()

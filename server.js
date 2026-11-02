@@ -32,8 +32,10 @@ app.use('/api/pedidos', require('./routes/pedidos'));  // 🧾 Mis pedidos (Mi c
 app.use('/api/cuenta',  require('./routes/cuenta'));   // 👤 Datos, contraseña y direcciones (Mi cuenta)
 app.use('/api/webhook', require('./routes/webhook')); // 🔔 Wompi webhooks
 app.use('/api/envios',  require('./routes/envios'));   // 🚚 Cotización de envío (MiPaquete)
-app.use("/api/mercadolibre", require('./routes/publicacion'));
-app.use('/api/mercadolibre', require('./routes/mercadolibre_token'));
+// 🛒 Mercado Libre: solo administradores (publican en la cuenta de la tienda y guardan sus tokens).
+const mlAdmin = [require('./middleware/verificarAuth'), require('./middleware/soloAdmin')]
+app.use('/api/mercadolibre', ...mlAdmin, require('./routes/publicacion'));
+app.use('/api/mercadolibre', ...mlAdmin, require('./routes/mercadolibre_token'));
 
 
 // El host de producción (Render, etc.) asigna el puerto por la variable PORT.
