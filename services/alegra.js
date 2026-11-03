@@ -351,7 +351,7 @@ async function generarFactura(pedido) {
     paymentForm: 'CASH',
     paymentMethod: medioDePago(metodoPago),
     status: emitir ? 'open' : 'draft',
-    anotation: `Pedido tienda en línea ${referencia}`,
+    anotation: pedido.anotacion || `Pedido tienda en línea ${referencia}`,
   }
   // Un borrador en Alegra SÍ gasta el consecutivo de su numeración (probado
   // el 2026-10-10: PL418 quedó en un borrador). Por eso los borradores van a
@@ -386,9 +386,20 @@ async function generarFactura(pedido) {
 }
 
 
+// PDF de una factura (Buffer). Lo usa la facturación de Mercado Libre para
+// subirlo a la venta.
+async function pdfFactura(id) {
+  const { pdf } = await llamarAlegra(`invoices/${id}?fields=pdf`)
+  if (!pdf) throw new Error(`Alegra no devolvió el PDF de la factura ${id}`)
+  const r = await fetch(pdf)
+  if (!r.ok) throw new Error(`No se descargó el PDF de la factura ${id}: HTTP ${r.status}`)
+  return Buffer.from(await r.arrayBuffer())
+}
+
 module.exports = {
   ...module.exports,
   generarFactura,
+  pdfFactura,
   obtenerProductos,
   digitoVerificacion,
   contactoDesdeCliente,

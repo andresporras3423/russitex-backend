@@ -36,6 +36,7 @@ app.use('/api/envios',  require('./routes/envios'));   // 🚚 Cotización de en
 const mlAdmin = [require('./middleware/verificarAuth'), require('./middleware/soloAdmin')]
 app.use('/api/mercadolibre', ...mlAdmin, require('./routes/publicacion'));
 app.use('/api/mercadolibre', ...mlAdmin, require('./routes/mercadolibre_token'));
+app.use('/api/webhook/mercadolibre', require('./routes/webhookMercadoLibre')); // 🛒 Ventas de Mercado Libre -> factura en Alegra
 
 
 // El host de producción (Render, etc.) asigna el puerto por la variable PORT.
@@ -46,3 +47,7 @@ app.listen(PORT, () => console.log(`Backend escuchando en el puerto ${PORT}`))
 // Red de seguridad de los avisos de reingreso. Apagada salvo que
 // AVISOS_CRON_MINUTOS esté en el .env.
 require('./services/cronAvisos').iniciarCronAvisos()
+
+// Red de seguridad de las facturas de Mercado Libre. Apagada salvo que
+// ML_CRON_MINUTOS esté en el .env.
+require('./services/ventasMercadoLibre').iniciarCronVentas()
