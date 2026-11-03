@@ -60,7 +60,7 @@ insert into tienda_info (clave, etiqueta, valor, grupo, orden, visible_bot, visi
   ('descripcion_corta', 'Descripción',               'Materiales para confección en Bogotá, Colombia.', 'identidad', 3, true, true),
 
   -- Horarios
-  ('horario_semana',    'Horario lunes a viernes',   '10:00 a.m. – 6:00 p.m.', 'horarios', 1, true, true),
+  ('horario_semana',    'Horario lunes a viernes',   '10:00 a.m. – 6:30 p.m.', 'horarios', 1, true, true),
   ('horario_sabado',    'Horario sábados',           '10:00 a.m. – 5:00 p.m.', 'horarios', 2, true, true),
   ('horario_domingo',   'Domingos y festivos',       'Cerrado', 'horarios', 3, true, true),
   ('horario_bot',       'Disponibilidad del asistente virtual', 'Disponible 24/7', 'horarios', 4, true, true),
