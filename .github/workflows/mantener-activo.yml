@@ -1,0 +1,24 @@
+# Una consulta diaria para que Supabase (plan gratis) no pause el proyecto
+# por inactividad. "refrescar=1" obliga al backend a leer tienda_info en
+# Supabase en vez de responder desde su caché. De paso despierta Render.
+#
+# Ojo: GitHub apaga las tareas programadas de un repositorio que pasa 60 días
+# sin cambios; si llega un correo de GitHub avisándolo, basta reactivarla en
+# la pestaña Actions.
+name: Mantener activo Supabase
+
+on:
+  schedule:
+    - cron: '0 13 * * *'   # 8:00 a.m. en Bogotá
+  workflow_dispatch:
+
+jobs:
+  consultar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar la información de la tienda
+        # Render gratis tarda hasta un minuto en despertar: se reintenta.
+        run: |
+          curl --fail --silent --show-error --retry 5 --retry-delay 30 --retry-all-errors --max-time 90 \
+            "https://russitex-backend.onrender.com/api/tienda?refrescar=1" > /dev/null
+          echo "Supabase respondió."
