@@ -77,10 +77,7 @@ WhatsApp, o a visitar la tienda si necesita tocar o comparar materiales.
 
 
 
-const CATEGORIAS = {
-  forros: 'Forros', entretelas: 'Entretelas', hombreras: 'Hombreras',
-  guatas: 'Guatas', tizas: 'Tizas', cierres: 'Cierres', otros: 'Otros materiales',
-}
+const { CATEGORIAS } = require('../services/categorias')
 
 // Lista de productos agrupada por categoría, con el precio real de Alegra.
 function formatearCatalogo(productos) {

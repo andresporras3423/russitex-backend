@@ -218,7 +218,7 @@ router.delete('/imagenes/:imgId', async (req, res) => {
 // Información del producto (productos_meta). El nombre, el precio y el
 // inventario vienen de Alegra y no se tocan aquí.
 // ------------------------------------------------------------
-const CATEGORIAS = ['forros', 'entretelas', 'hombreras', 'guatas', 'tizas', 'cierres', 'otros']
+const { CLAVES_CATEGORIA: CATEGORIAS } = require('../services/categorias')
 const UNIDADES = ['Por metro', 'Por unidad', 'Por caja', 'Por par']
 const ML_TIPOS = ['Rollo', 'Retazo', 'Tapiz']   // valores que acepta Mercado Libre en Rollos de Tela
 const CAMPOS_INFO = 'alegra_id, descripcion, descripcion_larga, usos, detalles, cuidados, presentacion, categoria, unidad, variante_etiqueta, peso_unit, volumen_unit, ' +

@@ -29,12 +29,13 @@ const ESCRIBIR = process.argv.includes('--escribir')
 // Es solo un punto de partida: revisá y corregí en Supabase.
 function adivinarCategoria(nombre) {
   const n = nombre.toLowerCase()
-  if (n.includes('forro')) return 'forros'
-  if (n.includes('entretela')) return 'entretelas'
+  if (n.includes('forro') || n.includes('valencina')) return 'forros'
+  if (n.includes('entretela') || n.includes('interl')) return 'entretelas'
   if (n.includes('hombrera')) return 'hombreras'
-  if (n.includes('guata')) return 'guatas'
+  if (/guata|banrol|pretina|bayetilla|borraflojo|sido/.test(n)) return 'refuerzos'
+  if (/bolsillo|dacr|lona|liencillo/.test(n)) return 'telas'
   if (n.includes('tiza')) return 'tizas'
-  if (n.includes('cremallera') || n.includes('cierre')) return 'cierres'
+  if (/cremallera|cierre|bot[oó]n/.test(n)) return 'botones'
   return 'otros'
 }
 

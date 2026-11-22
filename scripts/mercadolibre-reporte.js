@@ -24,10 +24,11 @@ const TITULO_MAX = 60
 const CATEGORIAS = {
   forros: 'MCO441173',      // Mercería > Rollos de Tela
   entretelas: 'MCO441173',  // Mercería > Rollos de Tela
-  guatas: 'MCO441173',      // Mercería > Rollos de Tela
+  refuerzos: 'MCO441173',   // Mercería > Rollos de Tela
+  telas: 'MCO441173',       // Mercería > Rollos de Tela
   hombreras: 'MCO437080',   // Mercería > Costura y Bordado > Otros
   tizas: 'MCO437080',       // Mercería > Costura y Bordado > Otros (la de "Tizas" es papelería escolar)
-  cierres: 'MCO441126',     // Mercería > Otros (la de "Cierres" es de bisutería)
+  botones: 'MCO441126',     // Mercería > Otros (la de "Cierres" es de bisutería); los botones van por EXCEPCIONES
   otros: 'MCO441126',       // Mercería > Otros
 }
 const EXCEPCIONES = [
