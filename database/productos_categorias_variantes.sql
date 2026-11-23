@@ -1,6 +1,6 @@
 -- ============================================================
 --  productos_meta — CATEGORÍAS, UNIDADES Y VARIANTES según el PDF
---  "Fichas de producto Russitex" (Paula, 2026-11-21), que es la fuente
+--  "Fichas de producto Russitex" (Jenny Paola, 2026-11-21), que es la fuente
 --  de verdad.
 --
 --  1. Cambia las categorías de 7 a 8: salen 'guatas' y 'cierres'; entran

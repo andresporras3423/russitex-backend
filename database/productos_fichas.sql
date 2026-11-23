@@ -1,7 +1,7 @@
 -- ============================================================
 --  productos_meta — FICHAS REALES de los 41 productos
 --
---  Fuente: "Fichas de producto Russitex" (PDF de Paula, 2026-11-21).
+--  Fuente: "Fichas de producto Russitex" (PDF de Jenny Paola, 2026-11-21).
 --  Reemplaza el primer borrador de productos_contenido.sql.
 --
 --  Llena: descripcion (corta), descripcion_larga, usos, detalles y

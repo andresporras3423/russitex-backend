@@ -2,7 +2,7 @@
 //  services/categorias.js
 //
 //  Las 8 categorías del catálogo, en el orden del menú. Salen de las
-//  fichas de producto de Paula (2026-11-21). La base de datos solo
+//  fichas de producto de Jenny Paola (2026-11-21). La base de datos solo
 //  acepta estas claves (ver database/productos_categorias_variantes.sql).
 //
 //  Si se agrega una, hay que agregarla también en el frontend:
